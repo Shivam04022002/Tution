@@ -1,16 +1,19 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 export interface IUser extends Document {
-  firebaseUid: string;
+  firebaseUid?: string;
   email: string;
   phoneNumber: string;
-  role: 'parent' | 'teacher' | 'admin';
+  password?: string;
+  role: 'parent' | 'teacher' | 'admin' | 'staff';
   profile: {
     firstName: string;
     lastName: string;
     profileImage?: string;
     dateOfBirth?: Date;
     gender?: 'male' | 'female' | 'other';
+    department?: string;
   };
   profileCompleted: boolean;
   onboardingCompleted: boolean;
@@ -22,15 +25,17 @@ export interface IUser extends Document {
   };
   isActive: boolean;
   isVerified: boolean;
+  isBlocked: boolean;
   createdAt: Date;
   updatedAt: Date;
+  comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
 const userSchema = new Schema<IUser>({
   firebaseUid: {
     type: String,
-    required: true,
     unique: true,
+    sparse: true,
   },
   email: {
     type: String,
@@ -45,9 +50,14 @@ const userSchema = new Schema<IUser>({
     unique: true,
     trim: true,
   },
+  password: {
+    type: String,
+    minlength: 6,
+    select: false,
+  },
   role: {
     type: String,
-    enum: ['parent', 'teacher', 'admin'],
+    enum: ['parent', 'teacher', 'admin', 'staff'],
     required: true,
     default: 'parent',
   },
@@ -73,6 +83,10 @@ const userSchema = new Schema<IUser>({
     gender: {
       type: String,
       enum: ['male', 'female', 'other'],
+      default: null,
+    },
+    department: {
+      type: String,
       default: null,
     },
   },
@@ -110,6 +124,10 @@ const userSchema = new Schema<IUser>({
     type: Boolean,
     default: false,
   },
+  isBlocked: {
+    type: Boolean,
+    default: false,
+  },
 }, {
   timestamps: true,
 });
@@ -128,7 +146,7 @@ userSchema.virtual('fullName').get(function() {
 });
 
 // Pre-save middleware
-userSchema.pre('save', function(next: any) {
+userSchema.pre('save', async function(next: any) {
   // Check if profile is completed
   const requiredFields = ['firstName', 'lastName'];
   const isProfileComplete = requiredFields.every(field => 
@@ -139,8 +157,20 @@ userSchema.pre('save', function(next: any) {
   if (isProfileComplete && !this.profileCompleted) {
     this.profileCompleted = true;
   }
+
+  // Hash password if modified
+  if (this.isModified('password') && this.password) {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+  }
   
   next();
 });
+
+// Compare password method
+userSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
+  if (!this.password) return false;
+  return bcrypt.compare(candidatePassword, this.password);
+};
 
 export const User = mongoose.model<IUser>('User', userSchema);

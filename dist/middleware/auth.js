@@ -16,7 +16,13 @@ const authenticate = async (req, res, next) => {
             });
         }
         const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
-        const user = await User_1.User.findOne({ firebaseUid: decoded.firebaseUid }).select('-__v');
+        let user;
+        if (decoded.userId) {
+            user = await User_1.User.findById(decoded.userId).select('-__v');
+        }
+        else if (decoded.firebaseUid) {
+            user = await User_1.User.findOne({ firebaseUid: decoded.firebaseUid }).select('-__v');
+        }
         if (!user) {
             return res.status(401).json({
                 success: false,

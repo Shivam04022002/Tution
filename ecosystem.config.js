@@ -17,8 +17,8 @@ module.exports = {
     {
       name: 'tuition-api',
       script: './server.js',
-      instances: process.env.PM2_INSTANCES || 2, // Number of CPU cores to use
-      exec_mode: process.env.PM2_EXEC_MODE || 'cluster', // Cluster mode for load balancing
+      instances: 1, // Single instance for fork mode
+      exec_mode: 'fork', // Fork mode for simpler deployment
       
       // Environment variables
       env: {
@@ -40,7 +40,7 @@ module.exports = {
       time: true,
       
       // Memory management
-      max_memory_restart: process.env.PM2_MAX_MEMORY_RESTART || '512M',
+      max_memory_restart: '400M', // Memory limit as specified
       
       // Auto-restart settings
       autorestart: true,
@@ -72,30 +72,6 @@ module.exports = {
       
       // Source map support
       source_map_support: true,
-      
-      // Pre-start script
-      // pre_exec: 'npm run prestart',
-      
-      // Post-stop script
-      // post_stop: 'npm run poststop',
     }
-  ],
-
-  /**
-   * Deployment configuration (optional)
-   * Configure if using PM2 deploy feature
-   */
-  deploy: {
-    production: {
-      user: 'ubuntu',
-      host: ['your-ec2-ip-or-domain'],
-      ref: 'origin/main',
-      repo: 'https://github.com/yourusername/tuition-marketplace.git',
-      path: '/var/www/tuition-api',
-      'post-deploy': 'npm install && npm run build && pm2 reload ecosystem.config.js --env production',
-      env: {
-        NODE_ENV: 'production'
-      }
-    }
-  }
+  ]
 };

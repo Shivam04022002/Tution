@@ -83,9 +83,7 @@ const userSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-// Indexes
-userSchema.index({ email: 1 });
-userSchema.index({ mobileNumber: 1 });
+// Indexes (email and mobileNumber are already indexed via unique: true)
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1, isBlocked: 1 });
 
@@ -107,18 +105,17 @@ userSchema.virtual('isProfileComplete').get(function() {
   return requiredFields.every(field => field);
 });
 
-// Pre-save middleware
-userSchema.pre('save', async function(next) {
+// Pre-save middleware - Mongoose v6+ async style
+userSchema.pre('save', async function() {
   if (!this.isModified('password') || !this.password) {
-    return next();
+    return;
   }
   
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
   } catch (error) {
-    next(error);
+    throw error;
   }
 });
 

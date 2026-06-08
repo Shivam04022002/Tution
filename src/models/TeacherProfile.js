@@ -322,8 +322,7 @@ const teacherProfileSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-// Indexes
-teacherProfileSchema.index({ userId: 1 });
+// Indexes (userId already indexed via unique: true)
 teacherProfileSchema.index({ 'locationAvailability.city': 1 });
 teacherProfileSchema.index({ 'locationAvailability.coordinates': '2dsphere' });
 teacherProfileSchema.index({ 'teachingDetails.subjects': 1 });

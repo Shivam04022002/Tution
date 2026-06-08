@@ -1,8 +1,9 @@
 import mongoose, { Document } from 'mongoose';
 export interface IUser extends Document {
-    firebaseUid: string;
+    firebaseUid?: string;
     email: string;
     phoneNumber: string;
+    password?: string;
     role: 'parent' | 'teacher' | 'admin';
     profile: {
         firstName: string;
@@ -23,6 +24,7 @@ export interface IUser extends Document {
     isVerified: boolean;
     createdAt: Date;
     updatedAt: Date;
+    comparePassword(candidatePassword: string): Promise<boolean>;
 }
 export declare const User: mongoose.Model<IUser, {}, {}, {}, mongoose.Document<unknown, {}, IUser, {}, mongoose.DefaultSchemaOptions> & IUser & Required<{
     _id: mongoose.Types.ObjectId;

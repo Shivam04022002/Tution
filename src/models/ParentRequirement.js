@@ -196,9 +196,8 @@ const parentRequirementSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-// Indexes
+// Indexes (requirementId already indexed via unique: true)
 parentRequirementSchema.index({ parentId: 1 });
-parentRequirementSchema.index({ requirementId: 1 });
 parentRequirementSchema.index({ status: 1 });
 parentRequirementSchema.index({ priority: 1 });
 parentRequirementSchema.index({ 'location.city': 1 });

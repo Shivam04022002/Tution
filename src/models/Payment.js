@@ -205,8 +205,7 @@ const paymentSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-// Indexes
-paymentSchema.index({ paymentId: 1 });
+// Indexes (paymentId and invoiceDetails.invoiceNumber already indexed via unique: true)
 paymentSchema.index({ userId: 1 });
 paymentSchema.index({ tutorId: 1 });
 paymentSchema.index({ parentId: 1 });
@@ -214,7 +213,6 @@ paymentSchema.index({ type: 1 });
 paymentSchema.index({ status: 1 });
 paymentSchema.index({ 'paymentGateway.orderId': 1 });
 paymentSchema.index({ 'paymentGateway.paymentId': 1 });
-paymentSchema.index({ 'invoiceDetails.invoiceNumber': 1 });
 paymentSchema.index({ paymentDate: -1 });
 paymentSchema.index({ createdAt: -1 });
 

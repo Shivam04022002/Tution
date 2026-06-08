@@ -40,7 +40,7 @@ export const initializeFirebase = (): void => {
   }
 };
 
-export const getAuth = () => {
+export const getAuth = (): admin.auth.Auth => {
   if (!firebaseApp) {
     throw new Error('Firebase not initialized. Please check your environment variables.');
   }
@@ -55,7 +55,11 @@ export const getFirestore = () => {
 };
 
 // For backward compatibility
-export const auth = {
+export const auth: {
+  createUser: (userData: any) => Promise<{ uid: string } | admin.auth.UserRecord>;
+  getUserByPhoneNumber: (phoneNumber: string) => Promise<{ uid: string } | admin.auth.UserRecord>;
+  verifyPhoneNumber: (phoneNumber: string, otp: string) => Promise<{ uid: string } | admin.auth.UserRecord>;
+} = {
   createUser: async (userData: any) => {
     try {
       const auth = getAuth();
@@ -73,6 +77,64 @@ export const auth = {
     } catch (error) {
       // Mock user retrieval for demo purposes
       console.log('Mock Firebase user retrieval:', phoneNumber);
+      return { uid: `mock_${phoneNumber.replace(/\D/g, '')}` };
+    }
+  },
+  verifyPhoneNumber: async (phoneNumber: string, otp: string) => {
+    try {
+      const auth = getAuth();
+      // In a real implementation, you would use Firebase's phone auth verification
+      // For now, we'll implement a basic OTP validation
+      // NOTE: This is a simplified implementation for demo purposes
+      // In production, you should use Firebase's official phone auth SDK
+      
+      // For demo: accept 6-digit OTPs starting with '1' as valid
+      if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+        throw new Error('auth/invalid-verification-code');
+      }
+      
+      // For demo: only accept OTPs starting with '1' as valid
+      if (!otp.startsWith('1')) {
+        throw new Error('auth/invalid-verification-code');
+      }
+      
+      // Get or create user by phone number
+      try {
+        const userRecord = await auth.getUserByPhoneNumber(phoneNumber);
+        return userRecord;
+      } catch (getUserError: any) {
+        // If user doesn't exist, create them
+        if (getUserError.code === 'auth/user-not-found') {
+          const newUser = await auth.createUser({
+            phoneNumber,
+            email: `${phoneNumber}@tuition.app`,
+            emailVerified: false,
+            disabled: false,
+          });
+          return newUser;
+        }
+        throw getUserError;
+      }
+    } catch (error: any) {
+      // Handle Firebase auth errors
+      if (error.code === 'auth/invalid-verification-code') {
+        throw new Error('Invalid OTP. Please try again.');
+      }
+      if (error.code === 'auth/code-expired') {
+        throw new Error('OTP has expired. Please request a new one.');
+      }
+      if (error.code === 'auth/too-many-requests') {
+        throw new Error('Too many attempts. Please try again later.');
+      }
+      
+      // Mock verification for demo purposes
+      console.log('Mock Firebase OTP verification:', { phoneNumber, otp });
+      if (otp.length !== 6) {
+        throw new Error('Invalid OTP. Please try again.');
+      }
+      if (!otp.startsWith('1')) {
+        throw new Error('Invalid OTP. Please try again.');
+      }
       return { uid: `mock_${phoneNumber.replace(/\D/g, '')}` };
     }
   },

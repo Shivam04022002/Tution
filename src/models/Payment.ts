@@ -290,18 +290,18 @@ PaymentSchema.virtual('isRefunded').get(function() {
   return this.status === 'refunded' || this.status === 'partially_refunded';
 });
 
-PaymentSchema.virtual('refundableAmount').get(function() {
+PaymentSchema.virtual('refundableAmount').get(function(this: IPayment) {
   if (this.status !== 'completed') return 0;
-  const refundedAmount = this.refundDetails?.amount || 0;
+  const refundedAmount = (this.refundDetails as { amount?: number })?.amount || 0;
   return this.totalAmount - refundedAmount;
 });
 
 // Pre-save middleware
-PaymentSchema.pre('save', function(next) {
+PaymentSchema.pre('save', async function(this: IPayment) {
   // Calculate GST amount (18% GST)
   if (this.isModified('amount') && !this.gstAmount) {
-    this.gstAmount = Math.round(this.amount * 0.18);
-    this.totalAmount = this.amount + this.gstAmount;
+    this.gstAmount = Math.round((this as any).amount * 0.18);
+    this.totalAmount = (this as any).amount + this.gstAmount;
   }
   
   // Update payment date when status changes to completed
@@ -313,8 +313,6 @@ PaymentSchema.pre('save', function(next) {
   if (this.isModified('status') && (this.status === 'refunded' || this.status === 'partially_refunded') && !this.refundDate) {
     this.refundDate = new Date();
   }
-  
-  next();
 });
 
 // Static methods

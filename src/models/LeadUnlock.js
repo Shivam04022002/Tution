@@ -164,12 +164,10 @@ const leadUnlockSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-// Indexes
+// Indexes (unlockId and paymentDetails.transactionId already indexed via unique: true)
 leadUnlockSchema.index({ requirementId: 1 });
 leadUnlockSchema.index({ tutorId: 1 });
 leadUnlockSchema.index({ parentId: 1 });
-leadUnlockSchema.index({ unlockId: 1 });
-leadUnlockSchema.index({ 'paymentDetails.transactionId': 1 });
 leadUnlockSchema.index({ 'paymentDetails.paymentStatus': 1 });
 leadUnlockSchema.index({ unlockStatus: 1 });
 leadUnlockSchema.index({ expiresAt: 1 });

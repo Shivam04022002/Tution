@@ -226,17 +226,17 @@ LeadUnlockSchema.index({ conversionStatus: 1 });
 LeadUnlockSchema.index({ createdAt: -1 });
 
 // Virtuals
-LeadUnlockSchema.virtual('isExpired').get(function() {
+LeadUnlockSchema.virtual('isExpired').get(function(this: ILeadUnlock) {
   return new Date() > this.expiresAt;
 });
 
-LeadUnlockSchema.virtual('daysUntilExpiry').get(function() {
+LeadUnlockSchema.virtual('daysUntilExpiry').get(function(this: ILeadUnlock) {
   const now = new Date();
   const diffTime = this.expiresAt.getTime() - now.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 });
 
-LeadUnlockSchema.virtual('canRequestRefund').get(function() {
+LeadUnlockSchema.virtual('canRequestRefund').get(function(this: ILeadUnlock) {
   return this.isRefundEligible && 
          !this.refundRequested && 
          this.paymentDetails.paymentStatus === 'completed' &&
@@ -244,16 +244,16 @@ LeadUnlockSchema.virtual('canRequestRefund').get(function() {
          new Date() <= new Date(this.unlockedAt.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days window
 });
 
-LeadUnlockSchema.virtual('totalContactAttempts').get(function() {
+LeadUnlockSchema.virtual('totalContactAttempts').get(function(this: ILeadUnlock) {
   return this.contactAttempts.length;
 });
 
-LeadUnlockSchema.virtual('successfulContactAttempts').get(function() {
-  return this.contactAttempts.filter(attempt => attempt.status === 'success').length;
+LeadUnlockSchema.virtual('successfulContactAttempts').get(function(this: ILeadUnlock) {
+  return this.contactAttempts.filter((attempt: { status: string }) => attempt.status === 'success').length;
 });
 
 // Pre-save middleware
-LeadUnlockSchema.pre('save', function(next) {
+LeadUnlockSchema.pre('save', async function(this: ILeadUnlock) {
   // Check if unlock is expired
   if (new Date() > this.expiresAt && this.unlockStatus === 'active') {
     this.unlockStatus = 'expired';
@@ -263,8 +263,6 @@ LeadUnlockSchema.pre('save', function(next) {
   if (this.conversionStatus === 'converted' || this.conversionStatus === 'lost') {
     this.isRefundEligible = false;
   }
-  
-  next();
 });
 
 // Static methods

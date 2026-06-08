@@ -17,8 +17,18 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { firebaseUid: string };
-    const user = await User.findOne({ firebaseUid: decoded.firebaseUid }).select('-__v');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    
+    // Find user by userId (standardized approach)
+    let user;
+    if (decoded.userId) {
+      user = await User.findById(decoded.userId).select('-__v');
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format.',
+      });
+    }
     
     if (!user) {
       return res.status(401).json({
@@ -84,11 +94,15 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { firebaseUid: string };
-      const user = await User.findOne({ firebaseUid: decoded.firebaseUid }).select('-__v');
-      
-      if (user && user.isActive) {
-        req.user = user;
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+        const user = await User.findById(decoded.userId).select('-__v');
+        
+        if (user && user.isActive) {
+          req.user = user;
+        }
+      } catch (error) {
+        // For optional auth, we don't return errors, just continue without user
       }
     }
     

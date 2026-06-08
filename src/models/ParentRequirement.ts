@@ -6,14 +6,18 @@ export interface IParentRequirement extends Document {
   requirementId: string;
   studentDetails: {
     studentName: string;
+    age: number;
     grade: string;
     board: string;
+    schoolName: string;
     genderPreference: 'any' | 'male' | 'female';
     multipleChildren: boolean;
     children?: Array<{
       name: string;
+      age: number;
       grade: string;
       board: string;
+      schoolName: string;
     }>;
   };
   subjects: string[];
@@ -34,6 +38,7 @@ export interface IParentRequirement extends Document {
     preferredTimings: string[];
     startDate: string;
   };
+  tutorPreferences?: string;
   budget: {
     minAmount: number;
     maxAmount: number;
@@ -56,6 +61,15 @@ export interface IParentRequirement extends Document {
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
+
+  // Instance methods
+  addTutorMatch(tutorId: mongoose.Types.ObjectId, matchScore: number): Promise<IParentRequirement>;
+  updateTutorMatchStatus(tutorId: mongoose.Types.ObjectId, status: string): Promise<IParentRequirement>;
+  incrementViews(): Promise<IParentRequirement>;
+  incrementUnlocks(): Promise<IParentRequirement>;
+  extendExpiry(days?: number): Promise<IParentRequirement>;
+  closeRequirement(reason?: string): Promise<IParentRequirement>;
+  getTopMatches(limit?: number): any[];
 }
 
 // Parent Requirement Schema
@@ -76,6 +90,12 @@ const ParentRequirementSchema: Schema = new Schema({
       required: true,
       trim: true,
     },
+    age: {
+      type: Number,
+      required: true,
+      min: 3,
+      max: 25,
+    },
     grade: {
       type: String,
       required: true,
@@ -83,6 +103,11 @@ const ParentRequirementSchema: Schema = new Schema({
     board: {
       type: String,
       required: true,
+    },
+    schoolName: {
+      type: String,
+      required: true,
+      trim: true,
     },
     genderPreference: {
       type: String,
@@ -98,6 +123,12 @@ const ParentRequirementSchema: Schema = new Schema({
         type: String,
         required: true,
       },
+      age: {
+        type: Number,
+        required: true,
+        min: 3,
+        max: 25,
+      },
       grade: {
         type: String,
         required: true,
@@ -105,6 +136,11 @@ const ParentRequirementSchema: Schema = new Schema({
       board: {
         type: String,
         required: true,
+      },
+      schoolName: {
+        type: String,
+        required: true,
+        trim: true,
       },
     }],
   },
@@ -169,6 +205,10 @@ const ParentRequirementSchema: Schema = new Schema({
       type: String,
       required: true,
     },
+  },
+  tutorPreferences: {
+    type: String,
+    default: '',
   },
   budget: {
     minAmount: {
@@ -269,40 +309,40 @@ ParentRequirementSchema.index({ expiresAt: 1 });
 ParentRequirementSchema.index({ createdAt: -1 });
 ParentRequirementSchema.index({ 'matchedTutors.tutorId': 1 });
 ParentRequirementSchema.index({ 'matchedTutors.status': 1 });
+ParentRequirementSchema.index({ isActive: 1, status: 1, expiresAt: 1 });
+ParentRequirementSchema.index({ tuitionType: 1 });
 
 // Virtuals
-ParentRequirementSchema.virtual('isExpired').get(function() {
-  return new Date() > this.expiresAt;
+ParentRequirementSchema.virtual('isExpired').get(function(this: IParentRequirement) {
+  return new Date() > (this.expiresAt || new Date());
 });
 
-ParentRequirementSchema.virtual('daysUntilExpiry').get(function() {
+ParentRequirementSchema.virtual('daysUntilExpiry').get(function(this: IParentRequirement) {
   const now = new Date();
-  const diffTime = this.expiresAt.getTime() - now.getTime();
+  const diffTime = (this.expiresAt?.getTime() || 0) - now.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 });
 
-ParentRequirementSchema.virtual('activeMatches').get(function() {
-  return this.matchedTutors.filter(match => 
+ParentRequirementSchema.virtual('activeMatches').get(function(this: IParentRequirement) {
+  return (this.matchedTutors || []).filter((match: any) => 
     match.status !== 'rejected' && match.status !== 'expired' && new Date() <= match.expiryDate
   );
 });
 
-ParentRequirementSchema.virtual('contactedMatches').get(function() {
-  return this.matchedTutors.filter(match => match.status === 'contacted');
+ParentRequirementSchema.virtual('contactedMatches').get(function(this: IParentRequirement) {
+  return (this.matchedTutors || []).filter((match: any) => match.status === 'contacted');
 });
 
 // Pre-save middleware
-ParentRequirementSchema.pre('save', function(next) {
+ParentRequirementSchema.pre('save', function(this: IParentRequirement) {
   // Update totalMatches count
-  this.totalMatches = this.matchedTutors.length;
+  this.totalMatches = (this.matchedTutors || []).length;
   
   // Check if requirement is expired
-  if (new Date() > this.expiresAt && this.status === 'active') {
+  if (new Date() > (this.expiresAt || new Date()) && this.status === 'active') {
     this.status = 'expired';
     this.isActive = false;
   }
-  
-  next();
 });
 
 // Static methods
@@ -360,30 +400,31 @@ ParentRequirementSchema.statics.generateRequirementId = function() {
 };
 
 // Instance methods
-ParentRequirementSchema.methods.addTutorMatch = function(tutorId: mongoose.Types.ObjectId, matchScore: number) {
+ParentRequirementSchema.methods.addTutorMatch = function(this: IParentRequirement, tutorId: mongoose.Types.ObjectId, matchScore: number) {
   // Check if tutor is already matched
-  const existingMatch = this.matchedTutors.find(match => match.tutorId.toString() === tutorId.toString());
+  const existingMatch = this.matchedTutors?.find((match: any) => match.tutorId?.toString() === tutorId.toString());
   
   if (existingMatch) {
     existingMatch.matchScore = matchScore;
     existingMatch.matchDate = new Date();
   } else {
-    this.matchedTutors.push({
+    this.matchedTutors?.push({
       tutorId,
       matchScore,
       matchDate: new Date(),
-      expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-    });
+      expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      status: 'recommended',
+    } as any);
   }
   
   return this.save();
 };
 
-ParentRequirementSchema.methods.updateTutorMatchStatus = function(tutorId: mongoose.Types.ObjectId, status: string) {
-  const match = this.matchedTutors.find(match => match.tutorId.toString() === tutorId.toString());
+ParentRequirementSchema.methods.updateTutorMatchStatus = function(this: IParentRequirement, tutorId: mongoose.Types.ObjectId, status: string) {
+  const match = this.matchedTutors?.find((match: any) => match.tutorId?.toString() === tutorId.toString());
   
   if (match) {
-    match.status = status;
+    (match as any).status = status;
     if (status === 'contacted') {
       match.contactedDate = new Date();
     }
@@ -393,18 +434,18 @@ ParentRequirementSchema.methods.updateTutorMatchStatus = function(tutorId: mongo
   return Promise.resolve(this);
 };
 
-ParentRequirementSchema.methods.incrementViews = function() {
-  this.views += 1;
+ParentRequirementSchema.methods.incrementViews = function(this: IParentRequirement) {
+  this.views = (this.views || 0) + 1;
   return this.save();
 };
 
-ParentRequirementSchema.methods.incrementUnlocks = function() {
-  this.unlocks += 1;
+ParentRequirementSchema.methods.incrementUnlocks = function(this: IParentRequirement) {
+  this.unlocks = (this.unlocks || 0) + 1;
   return this.save();
 };
 
-ParentRequirementSchema.methods.extendExpiry = function(days: number = 7) {
-  const newExpiryDate = new Date(this.expiresAt);
+ParentRequirementSchema.methods.extendExpiry = function(this: IParentRequirement, days: number = 7) {
+  const newExpiryDate = new Date(this.expiresAt || Date.now());
   newExpiryDate.setDate(newExpiryDate.getDate() + days);
   this.expiresAt = newExpiryDate;
   this.status = 'active';
@@ -412,11 +453,11 @@ ParentRequirementSchema.methods.extendExpiry = function(days: number = 7) {
   return this.save();
 };
 
-ParentRequirementSchema.methods.closeRequirement = function(reason?: string) {
+ParentRequirementSchema.methods.closeRequirement = function(this: IParentRequirement, reason?: string) {
   this.status = 'closed';
   this.isActive = false;
   // Close all active matches
-  this.matchedTutors.forEach(match => {
+  this.matchedTutors?.forEach((match: any) => {
     if (match.status === 'recommended' || match.status === 'viewed') {
       match.status = 'expired';
     }
@@ -424,10 +465,10 @@ ParentRequirementSchema.methods.closeRequirement = function(reason?: string) {
   return this.save();
 };
 
-ParentRequirementSchema.methods.getTopMatches = function(limit: number = 5) {
-  return this.matchedTutors
-    .filter(match => match.status !== 'rejected' && match.status !== 'expired' && new Date() <= match.expiryDate)
-    .sort((a, b) => b.matchScore - a.matchScore)
+ParentRequirementSchema.methods.getTopMatches = function(this: IParentRequirement, limit: number = 5) {
+  return (this.matchedTutors || [])
+    .filter((match: any) => match.status !== 'rejected' && match.status !== 'expired' && new Date() <= match.expiryDate)
+    .sort((a: any, b: any) => b.matchScore - a.matchScore)
     .slice(0, limit);
 };
 

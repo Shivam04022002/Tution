@@ -44,11 +44,19 @@ export interface ITeacherProfile extends Document {
       longitude: number;
     };
     preferredAreas: string[];
+    preferredLocations: Array<{
+      area: string;
+      city: string;
+      latitude: number;
+      longitude: number;
+      radiusKm: number;
+    }>;
     teachingRadius: number;
     availableDays: string[];
     availableTimeSlots: string[];
     vacationMode: boolean;
   };
+  bio?: string;
   pricingRevenue: {
     hourlyRate: number;
     monthlyRate: number;
@@ -88,8 +96,15 @@ export interface ITeacherProfile extends Document {
   isVerified: boolean;
   isBlocked: boolean;
   blockReason?: string;
+  isProfileComplete?: boolean;
+  profileCompletionPercentage?: number;
   createdAt: Date;
   updatedAt: Date;
+  
+  // Instance methods
+  toggleVacationMode(): Promise<ITeacherProfile>;
+  updateStats(statsUpdate: Partial<ITeacherProfile['stats']>): Promise<ITeacherProfile>;
+  canAcceptLead(): boolean;
 }
 
 // Teacher Profile Schema
@@ -245,6 +260,37 @@ const TeacherProfileSchema: Schema = new Schema({
     preferredAreas: [{
       type: String,
     }],
+    preferredLocations: [{
+      area: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      city: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      latitude: {
+        type: Number,
+        required: true,
+        min: -90,
+        max: 90,
+      },
+      longitude: {
+        type: Number,
+        required: true,
+        min: -180,
+        max: 180,
+      },
+      radiusKm: {
+        type: Number,
+        required: true,
+        min: 1,
+        max: 50,
+        default: 5,
+      },
+    }],
     teachingRadius: {
       type: Number,
       required: true,
@@ -265,6 +311,10 @@ const TeacherProfileSchema: Schema = new Schema({
       type: Boolean,
       default: false,
     },
+  },
+  bio: {
+    type: String,
+    default: '',
   },
   pricingRevenue: {
     hourlyRate: {
@@ -409,6 +459,16 @@ const TeacherProfileSchema: Schema = new Schema({
   blockReason: {
     type: String,
   },
+  isProfileComplete: {
+    type: Boolean,
+    default: false,
+  },
+  profileCompletionPercentage: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100,
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -425,21 +485,24 @@ TeacherProfileSchema.index({ verificationStatus: 1 });
 TeacherProfileSchema.index({ isActive: 1, isVerified: 1, isBlocked: 1 });
 TeacherProfileSchema.index({ 'stats.averageRating': -1 });
 TeacherProfileSchema.index({ 'pricingRevenue.hourlyRate': 1 });
+TeacherProfileSchema.index({ 'locationAvailability.vacationMode': 1 });
+TeacherProfileSchema.index({ 'teachingDetails.teachingModes': 1 });
+TeacherProfileSchema.index({ 'teachingDetails.boards': 1 });
 
 // Virtuals
-TeacherProfileSchema.virtual('profileCompletion').get(function() {
+TeacherProfileSchema.virtual('profileCompletion').get(function(this: ITeacherProfile) {
   const fields = [
-    this.basicDetails.fullName,
-    this.basicDetails.mobileNumber,
-    this.basicDetails.email,
-    this.education.highestQualification,
-    this.education.degree,
-    this.teachingDetails.subjects.length > 0,
-    this.teachingDetails.classes.length > 0,
-    this.locationAvailability.address,
-    this.pricingRevenue.hourlyRate,
-    this.verificationDocuments.aadhaarCard,
-    this.verificationDocuments.panCard,
+    this.basicDetails?.fullName,
+    this.basicDetails?.mobileNumber,
+    this.basicDetails?.email,
+    this.education?.highestQualification,
+    this.education?.degree,
+    this.teachingDetails?.subjects?.length > 0,
+    this.teachingDetails?.classes?.length > 0,
+    this.locationAvailability?.address,
+    this.pricingRevenue?.hourlyRate,
+    this.verificationDocuments?.aadhaarCard,
+    this.verificationDocuments?.panCard,
   ];
   
   const completedFields = fields.filter(field => field).length;
@@ -447,12 +510,11 @@ TeacherProfileSchema.virtual('profileCompletion').get(function() {
 });
 
 // Pre-save middleware
-TeacherProfileSchema.pre('save', function(next) {
+TeacherProfileSchema.pre('save', function() {
   if (this.isModified('verificationStatus') && this.verificationStatus === 'verified') {
     this.verificationDate = new Date();
     this.isVerified = true;
   }
-  next();
 });
 
 // Static methods
