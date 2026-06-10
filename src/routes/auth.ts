@@ -9,6 +9,7 @@ import {
   login,
   signup,
   registerComplete,
+  checkDuplicate,
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 
@@ -108,5 +109,6 @@ router.post('/register-complete', registerCompleteValidation, registerComplete);
 router.get('/me', authenticate, getCurrentUser);
 router.put('/profile', authenticate, updateProfileValidation, updateProfile);
 router.post('/logout', authenticate, logout);
+router.post('/check-duplicate', checkDuplicate);
 
 export default router;

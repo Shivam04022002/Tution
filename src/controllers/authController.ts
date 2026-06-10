@@ -756,3 +756,37 @@ export const signup = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Check for duplicate account (email or mobile)
+export const checkDuplicate = async (req: Request, res: Response) => {
+  try {
+    const { email, mobileNumber } = req.body;
+
+    if (!email && !mobileNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email or mobile number is required',
+      });
+    }
+
+    const query: any = {};
+    if (email) query.email = email.toLowerCase();
+    if (mobileNumber) query.phoneNumber = mobileNumber;
+
+    const existingUser = await User.findOne({
+      $or: Object.keys(query).map((key) => ({ [key]: query[key] })),
+    });
+
+    return res.status(200).json({
+      success: true,
+      exists: !!existingUser,
+      message: existingUser ? 'Account already exists' : 'Account available',
+    });
+  } catch (error: any) {
+    console.error('Check duplicate error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to check account availability',
+    });
+  }
+};
