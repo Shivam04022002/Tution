@@ -469,23 +469,27 @@ export const registerComplete = async (req: Request, res: Response) => {
         maxAmount = budget.max;
       }
 
-      // Parse teaching mode
-      const modeMap: { [key: string]: string } = {
-        'Home Tuition': 'home',
-        'Online Tuition': 'online',
-        'Group Tuition': 'group',
-      };
-      const tuitionType = modeMap[tuitionRequirement?.tuitionMode] || 'home';
+      // Use tuitionType from frontend if provided, otherwise map from tuitionMode
+      let tuitionType = tuitionRequirement?.tuitionType || 'home';
+      if (!tuitionType && tuitionRequirement?.tuitionMode) {
+        const modeMap: { [key: string]: string } = {
+          'Home Tuition': 'home',
+          'Online Tuition': 'online',
+          'Group Tuition': 'group',
+          'Crash Course': 'crash',
+        };
+        tuitionType = modeMap[tuitionRequirement.tuitionMode] || 'home';
+      }
 
-      // Create parent requirement
+      // Create parent requirement with proper field mappings
       const parentRequirement = new ParentRequirement({
         parentId: user._id,
         requirementId: generateRequirementId(),
         studentDetails: {
           studentName: studentDetails?.studentName,
           age: parseInt(studentDetails?.age, 10) || 0,
-          grade: studentDetails?.className,
-          board: tuitionRequirement?.board,
+          grade: studentDetails?.grade || studentDetails?.className, // Use grade from new payload
+          board: studentDetails?.board || tuitionRequirement?.board, // Use board from correct location
           schoolName: studentDetails?.schoolName,
           genderPreference: studentDetails?.gender || 'any',
           multipleChildren: false,
@@ -497,8 +501,11 @@ export const registerComplete = async (req: Request, res: Response) => {
           address: locationDetails?.address,
           city: locationDetails?.city,
           pincode: locationDetails?.pincode,
-          coordinates: { latitude: 0, longitude: 0 },
-          teachingRadius: 5,
+          coordinates: {
+            latitude: locationDetails?.latitude || 0,
+            longitude: locationDetails?.longitude || 0,
+          },
+          teachingRadius: locationDetails?.teachingRadius || 5,
         },
         schedule: {
           daysPerWeek: '3',
