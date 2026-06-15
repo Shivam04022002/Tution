@@ -5,7 +5,9 @@ export interface IPromoCode extends Document {
     discountType: 'flat' | 'percent';
     discountValue: number;
     maxDiscountAmount?: number;
-    applicableTo: 'unlock_lead' | 'unlock_tutor' | 'all';
+    applicableTo: 'unlock_lead' | 'unlock_tutor' | 'subscription' | 'credit_pack' | 'all';
+    applicablePlans?: string[];
+    applicablePacks?: string[];
     minOrderAmount: number;
     usageLimit: number;
     usageCount: number;
@@ -18,7 +20,7 @@ export interface IPromoCode extends Document {
     createdBy: mongoose.Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
-    isValid(userId: mongoose.Types.ObjectId, orderAmount: number, type: string): Promise<{
+    isValid(userId: mongoose.Types.ObjectId, orderAmount: number, type: string, planName?: string, packId?: string): Promise<{
         valid: boolean;
         error?: string;
     }>;

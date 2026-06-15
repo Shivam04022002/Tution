@@ -17,7 +17,17 @@ export type AuditAction =
   | 'UNLOCK_TUTOR'
   | 'PAYMENT_SUCCESS'
   | 'PAYMENT_FAILED'
-  | 'PAYMENT_REFUNDED';
+  | 'PAYMENT_REFUNDED'
+  | 'CONTACT_REQUEST_CREATED'
+  | 'DEMO_REQUEST_CREATED'
+  | 'CONTACT_REQUEST_ACCEPTED'
+  | 'CONTACT_REQUEST_REJECTED'
+  | 'CONTACT_REQUEST_COMPLETED'
+  | 'DEMO_RESCHEDULED'
+  | 'PROMO_APPLIED'
+  | 'PROMO_APPLY_FAILED'
+  | 'REFERRAL_REGISTERED'
+  | 'REFERRAL_REWARDED';
 
 export type AuditEntityType =
   | 'User'
@@ -26,7 +36,10 @@ export type AuditEntityType =
   | 'TutorApplication'
   | 'DemoClass'
   | 'Payment'
-  | 'LeadUnlock';
+  | 'LeadUnlock'
+  | 'ContactRequest'
+  | 'PromoCode'
+  | 'Referral';
 
 export interface IAuditLog extends Document {
   adminId: mongoose.Types.ObjectId;
@@ -38,6 +51,7 @@ export interface IAuditLog extends Document {
   ipAddress?: string;
   userAgent?: string;
   notes?: string;
+  details?: Record<string, any>;
   createdAt: Date;
 }
 
@@ -68,6 +82,16 @@ const AuditLogSchema = new Schema<IAuditLog>(
         'PAYMENT_SUCCESS',
         'PAYMENT_FAILED',
         'PAYMENT_REFUNDED',
+        'CONTACT_REQUEST_CREATED',
+        'DEMO_REQUEST_CREATED',
+        'CONTACT_REQUEST_ACCEPTED',
+        'CONTACT_REQUEST_REJECTED',
+        'CONTACT_REQUEST_COMPLETED',
+        'DEMO_RESCHEDULED',
+        'PROMO_APPLIED',
+        'PROMO_APPLY_FAILED',
+        'REFERRAL_REGISTERED',
+        'REFERRAL_REWARDED',
       ],
       required: true,
     },
@@ -81,6 +105,9 @@ const AuditLogSchema = new Schema<IAuditLog>(
         'DemoClass',
         'Payment',
         'LeadUnlock',
+        'ContactRequest',
+        'PromoCode',
+        'Referral',
       ],
       required: true,
     },
@@ -108,6 +135,10 @@ const AuditLogSchema = new Schema<IAuditLog>(
       type: String,
       trim: true,
       maxlength: 1000,
+    },
+    details: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
   },
   {

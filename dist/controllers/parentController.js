@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.extendRequirement = exports.closeRequirement = exports.getRequirementById = exports.getAllRequirements = exports.updateParentProfile = exports.getParentProfile = exports.registerParent = void 0;
+exports.updateRequirement = exports.createRequirement = exports.deleteRequirement = exports.getMyRequirements = exports.extendRequirement = exports.updateRequirementStatus = exports.closeRequirement = exports.getRequirementById = exports.getAllRequirements = exports.updateParentProfile = exports.getParentProfile = exports.registerParent = void 0;
 const ParentRequirement_1 = require("../models/ParentRequirement");
 const User_1 = require("../models/User");
 const MatchingService_1 = require("../services/MatchingService");
@@ -158,7 +158,7 @@ const getParentProfile = async (req, res) => {
                 user,
                 requirements,
                 totalRequirements: requirements.length,
-                activeRequirements: requirements.filter(r => r.status === 'active').length,
+                activeRequirements: requirements.filter(r => ['published', 'receiving_applications', 'shortlisted', 'demo_scheduled'].includes(r.status)).length,
             },
         });
     }
@@ -350,6 +350,49 @@ const closeRequirement = async (req, res) => {
     }
 };
 exports.closeRequirement = closeRequirement;
+const updateRequirementStatus = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        const { status } = req.body;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        const ALLOWED = ['active', 'paused'];
+        if (!status || !ALLOWED.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status. Allowed values: ${ALLOWED.join(', ')}`,
+            });
+        }
+        const requirement = await ParentRequirement_1.ParentRequirement.findOne({ _id: id, parentId: userId });
+        if (!requirement) {
+            return res.status(404).json({ success: false, message: 'Requirement not found or unauthorized' });
+        }
+        if (requirement.status === 'closed' || requirement.status === 'expired') {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot change status of a closed or expired requirement',
+            });
+        }
+        requirement.status = status;
+        await requirement.save();
+        return res.status(200).json({
+            success: true,
+            message: `Requirement ${status === 'paused' ? 'paused' : 'resumed'} successfully`,
+            data: { requirement },
+        });
+    }
+    catch (error) {
+        console.error('Update requirement status error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to update requirement status',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.updateRequirementStatus = updateRequirementStatus;
 const extendRequirement = async (req, res) => {
     try {
         const userId = req.user?._id;
@@ -388,6 +431,218 @@ const extendRequirement = async (req, res) => {
     }
 };
 exports.extendRequirement = extendRequirement;
+const getMyRequirements = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required',
+            });
+        }
+        const requirements = await ParentRequirement_1.ParentRequirement.find({ parentId: userId })
+            .sort({ createdAt: -1 });
+        const counts = {
+            total: requirements.length,
+            active: requirements.filter(r => ['published', 'receiving_applications', 'shortlisted', 'demo_scheduled'].includes(r.status)).length,
+            closed: requirements.filter(r => r.status === 'closed').length,
+            expired: requirements.filter(r => r.status === 'expired').length,
+            paused: requirements.filter(r => r.status === 'paused').length,
+            hired: requirements.filter(r => r.status === 'hired').length,
+        };
+        return res.status(200).json({
+            success: true,
+            data: {
+                requirements,
+                total: requirements.length,
+                counts,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Get my requirements error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch requirements',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.getMyRequirements = getMyRequirements;
+const deleteRequirement = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required',
+            });
+        }
+        const requirement = await ParentRequirement_1.ParentRequirement.findOne({
+            _id: id,
+            parentId: userId,
+        });
+        if (!requirement) {
+            return res.status(404).json({
+                success: false,
+                message: 'Requirement not found or unauthorized',
+            });
+        }
+        if (['published', 'receiving_applications', 'shortlisted', 'demo_scheduled'].includes(requirement.status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot delete an active requirement. Close or hire first.',
+            });
+        }
+        requirement.isActive = false;
+        await requirement.save();
+        return res.status(200).json({
+            success: true,
+            message: 'Requirement deleted successfully',
+        });
+    }
+    catch (error) {
+        console.error('Delete requirement error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to delete requirement',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.deleteRequirement = deleteRequirement;
+const createRequirement = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        const { studentName, grade, board, subjects, tuitionType, address, city, state, pincode, budgetMin, budgetMax, preferredDays, preferredTimings, notes, } = req.body;
+        if (!studentName || !grade || !board || !subjects?.length || !tuitionType || !budgetMax) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+        const requirementId = generateRequirementId();
+        const requirement = new ParentRequirement_1.ParentRequirement({
+            parentId: userId,
+            requirementId,
+            studentDetails: {
+                studentName: studentName.trim(),
+                age: 0,
+                grade: grade.trim(),
+                board: board.trim(),
+                schoolName: '',
+                genderPreference: 'any',
+                multipleChildren: false,
+            },
+            subjects: Array.isArray(subjects) ? subjects : [subjects],
+            languagePreference: ['English'],
+            tuitionType,
+            location: {
+                address: address || '',
+                city: city || '',
+                pincode: pincode || '000000',
+                coordinates: { latitude: 0, longitude: 0 },
+                teachingRadius: 5,
+            },
+            schedule: {
+                daysPerWeek: preferredDays?.length?.toString() || '3',
+                preferredTimings: preferredTimings || [],
+                startDate: new Date().toISOString().split('T')[0],
+            },
+            tutorPreferences: notes || '',
+            budget: {
+                minAmount: parseInt(budgetMin, 10) || 0,
+                maxAmount: parseInt(budgetMax, 10) || 0,
+                negotiationAllowed: true,
+            },
+            status: 'active',
+            priority: 'medium',
+            matchedTutors: [],
+            totalMatches: 0,
+            views: 0,
+            unlocks: 0,
+            isActive: true,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+        await requirement.save();
+        MatchingService_1.MatchingService.generateAndSaveForRequirement(requirement).then(count => {
+            console.log(`[Matching] Auto-generated ${count} matches for ${requirementId}`);
+        }).catch(err => {
+            console.error(`[Matching] Auto-match failed for ${requirementId}:`, err);
+        });
+        return res.status(201).json({
+            success: true,
+            message: 'Requirement posted successfully',
+            data: { requirementId, requirement },
+        });
+    }
+    catch (error) {
+        console.error('Create requirement error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to create requirement',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.createRequirement = createRequirement;
+const updateRequirement = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { id } = req.params;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        const requirement = await ParentRequirement_1.ParentRequirement.findOne({ _id: id, parentId: userId });
+        if (!requirement) {
+            return res.status(404).json({ success: false, message: 'Requirement not found or unauthorized' });
+        }
+        const { studentName, grade, board, subjects, tuitionType, address, city, state, pincode, budgetMin, budgetMax, preferredDays, preferredTimings, notes, } = req.body;
+        if (studentName)
+            requirement.studentDetails.studentName = studentName.trim();
+        if (grade)
+            requirement.studentDetails.grade = grade.trim();
+        if (board)
+            requirement.studentDetails.board = board.trim();
+        if (subjects?.length)
+            requirement.subjects = Array.isArray(subjects) ? subjects : [subjects];
+        if (tuitionType)
+            requirement.tuitionType = tuitionType;
+        if (address !== undefined)
+            requirement.location.address = address;
+        if (city !== undefined)
+            requirement.location.city = city;
+        if (pincode !== undefined)
+            requirement.location.pincode = pincode || '000000';
+        if (budgetMin !== undefined)
+            requirement.budget.minAmount = parseInt(budgetMin, 10) || 0;
+        if (budgetMax !== undefined)
+            requirement.budget.maxAmount = parseInt(budgetMax, 10) || 0;
+        if (preferredDays !== undefined) {
+            requirement.schedule.daysPerWeek = preferredDays?.length?.toString() || '3';
+        }
+        if (preferredTimings !== undefined)
+            requirement.schedule.preferredTimings = preferredTimings;
+        if (notes !== undefined)
+            requirement.tutorPreferences = notes;
+        await requirement.save();
+        return res.status(200).json({
+            success: true,
+            message: 'Requirement updated successfully',
+            data: { requirement },
+        });
+    }
+    catch (error) {
+        console.error('Update requirement error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to update requirement',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.updateRequirement = updateRequirement;
 const generateRequirementId = () => {
     const timestamp = Date.now().toString(36);
     const random = Math.random().toString(36).substr(2, 5);

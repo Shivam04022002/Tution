@@ -13,7 +13,9 @@ export interface IPromoCode extends Document {
   maxDiscountAmount?: number;         // cap for percent type
 
   // Applicability
-  applicableTo: 'unlock_lead' | 'unlock_tutor' | 'all';
+  applicableTo: 'unlock_lead' | 'unlock_tutor' | 'subscription' | 'credit_pack' | 'all';
+  applicablePlans?: string[];          // for subscription type: which plans (free/starter/professional/premium)
+  applicablePacks?: string[];          // for credit_pack type: which packs (pack_5/pack_15/pack_50/pack_100)
   minOrderAmount: number;             // minimum order before discount
 
   // Usage limits
@@ -38,7 +40,7 @@ export interface IPromoCode extends Document {
   updatedAt: Date;
 
   // Methods
-  isValid(userId: mongoose.Types.ObjectId, orderAmount: number, type: string): Promise<{ valid: boolean; error?: string }>;
+  isValid(userId: mongoose.Types.ObjectId, orderAmount: number, type: string, planName?: string, packId?: string): Promise<{ valid: boolean; error?: string }>;
   computeDiscount(baseAmount: number): number;
 }
 
@@ -63,9 +65,11 @@ const PromoCodeSchema = new Schema<IPromoCode>(
 
     applicableTo:  {
       type: String,
-      enum: ['unlock_lead', 'unlock_tutor', 'all'],
+      enum: ['unlock_lead', 'unlock_tutor', 'subscription', 'credit_pack', 'all'],
       default: 'all',
     },
+    applicablePlans: [{ type: String }],
+    applicablePacks: [{ type: String }],
     minOrderAmount: { type: Number, default: 0 },
 
     usageLimit:    { type: Number, required: true, default: 1000 },
@@ -97,6 +101,8 @@ PromoCodeSchema.methods.isValid = async function (
   userId: mongoose.Types.ObjectId,
   orderAmount: number,
   type: string,
+  planName?: string,
+  packId?: string,
 ): Promise<{ valid: boolean; error?: string }> {
   const now = new Date();
 
@@ -108,6 +114,21 @@ PromoCodeSchema.methods.isValid = async function (
   if (this.applicableTo !== 'all' && this.applicableTo !== type) {
     return { valid: false, error: `Promo code not applicable for this payment type.` };
   }
+
+  // Check applicable plans for subscription type
+  if (this.applicableTo === 'subscription' && this.applicablePlans && this.applicablePlans.length > 0) {
+    if (!planName || !this.applicablePlans.includes(planName)) {
+      return { valid: false, error: `Promo code not applicable for this subscription plan.` };
+    }
+  }
+
+  // Check applicable packs for credit_pack type
+  if (this.applicableTo === 'credit_pack' && this.applicablePacks && this.applicablePacks.length > 0) {
+    if (!packId || !this.applicablePacks.includes(packId)) {
+      return { valid: false, error: `Promo code not applicable for this credit pack.` };
+    }
+  }
+
   if (this.restrictedToUserIds && this.restrictedToUserIds.length > 0) {
     const allowed = this.restrictedToUserIds.map((id) => id.toString());
     if (!allowed.includes(userId.toString())) {

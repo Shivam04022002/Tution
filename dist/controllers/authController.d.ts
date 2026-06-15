@@ -8,4 +8,5 @@ export declare const logout: (req: AuthRequest, res: Response) => Promise<Respon
 export declare const login: (req: Request, res: Response) => Promise<Response<any, Record<string, any>>>;
 export declare const registerComplete: (req: Request, res: Response) => Promise<Response<any, Record<string, any>>>;
 export declare const signup: (req: Request, res: Response) => Promise<Response<any, Record<string, any>>>;
+export declare const checkDuplicate: (req: Request, res: Response) => Promise<Response<any, Record<string, any>>>;
 //# sourceMappingURL=authController.d.ts.map

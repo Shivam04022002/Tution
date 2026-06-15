@@ -232,7 +232,7 @@ parentRequirementSchema.virtual('contactedMatches').get(function() {
 });
 
 // Pre-save middleware
-parentRequirementSchema.pre('save', function(next) {
+parentRequirementSchema.pre('save', function() {
   // Update totalMatches count
   this.totalMatches = this.matchedTutors.length;
   
@@ -241,8 +241,6 @@ parentRequirementSchema.pre('save', function(next) {
     this.status = 'expired';
     this.isActive = false;
   }
-  
-  next();
 });
 
 // Static methods

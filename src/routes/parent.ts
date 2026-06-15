@@ -9,7 +9,11 @@ import {
   extendRequirement,
   getMyRequirements,
   deleteRequirement,
+  createRequirement,
+  updateRequirement,
+  updateRequirementStatus,
 } from '../controllers/parentController';
+import { getRequirementApplications, closeRequirement as closeReq } from '../controllers/applicationController';
 import { authenticate, authorize } from '../middleware/auth';
 import {
   registerParentValidation,
@@ -70,6 +74,46 @@ router.post(
   authenticate,
   authorize('parent', 'admin'),
   extendRequirement
+);
+
+// Create a new requirement (post-registration, authenticated parent)
+router.post(
+  '/requirements',
+  authenticate,
+  authorize('parent', 'admin'),
+  createRequirement
+);
+
+// Update an existing requirement
+router.put(
+  '/requirements/:id',
+  authenticate,
+  authorize('parent', 'admin'),
+  updateRequirement
+);
+
+// Update requirement status (pause / resume)
+router.patch(
+  '/requirements/:id/status',
+  authenticate,
+  authorize('parent', 'admin'),
+  updateRequirementStatus
+);
+
+// Get applications for a specific requirement
+router.get(
+  '/requirements/:id/applications',
+  authenticate,
+  authorize('parent', 'admin'),
+  getRequirementApplications
+);
+
+// Close requirement (with hiring workflow)
+router.post(
+  '/requirements/:id/close-hire',
+  authenticate,
+  authorize('parent', 'admin'),
+  closeReq
 );
 
 export default router;

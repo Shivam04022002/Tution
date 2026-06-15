@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTeacherDashboard = exports.getParentDashboard = void 0;
+exports.getParentQuickStats = exports.getTeacherDashboard = exports.getParentDashboard = void 0;
 const ParentRequirement_1 = require("../models/ParentRequirement");
 const TutorApplication_1 = require("../models/TutorApplication");
 const TeacherProfile_1 = require("../models/TeacherProfile");
@@ -8,6 +8,7 @@ const TutorMatch_1 = require("../models/TutorMatch");
 const DemoClass_1 = require("../models/DemoClass");
 const Shortlist_1 = require("../models/Shortlist");
 const ScheduledClass_1 = require("../models/ScheduledClass");
+const Notification_1 = require("../models/Notification");
 const getParentDashboard = async (req, res) => {
     try {
         const parentId = req.user?._id;
@@ -17,7 +18,7 @@ const getParentDashboard = async (req, res) => {
                 message: 'Authentication required',
             });
         }
-        const [activeRequirements, applications, shortlistedTutors, upcomingDemos, stats,] = await Promise.all([
+        const [activeRequirements, applications, shortlistedTutors, upcomingDemos, stats, recommendedTutors, notificationsCount,] = await Promise.all([
             ParentRequirement_1.ParentRequirement.find({
                 parentId,
                 status: 'active',
@@ -57,6 +58,26 @@ const getParentDashboard = async (req, res) => {
             })
                 .sort({ scheduledDate: 1 }),
             getParentStats(parentId),
+            TutorMatch_1.TutorMatch.find({
+                parentId,
+                status: 'recommended',
+                isActive: true,
+                expiryDate: { $gte: new Date() },
+            })
+                .populate({
+                path: 'teacherId',
+                select: 'profile.teacherName',
+            })
+                .populate({
+                path: 'teacherProfileId',
+                select: 'basicDetails.fullName basicDetails.profilePhoto teachingDetails.subjects pricingRevenue.experienceYears stats.averageRating locationAvailability.city locationAvailability.coordinates',
+            })
+                .sort({ overallScore: -1 })
+                .limit(10),
+            Notification_1.Notification.countDocuments({
+                userId: parentId,
+                isRead: false,
+            }),
         ]);
         return res.status(200).json({
             success: true,
@@ -66,6 +87,8 @@ const getParentDashboard = async (req, res) => {
                 applications,
                 shortlistedTutors,
                 upcomingDemos,
+                recommendedTutors,
+                notificationsCount,
             },
         });
     }
@@ -115,6 +138,10 @@ const getTeacherDashboard = async (req, res) => {
                 .populate({
                 path: 'parentRequirementId',
                 select: 'requirementId studentDetails subjects budget',
+            })
+                .populate({
+                path: 'parentId',
+                select: 'profile.parentName profile.mobileNumber',
             })
                 .sort({ createdAt: -1 }),
             DemoClass_1.DemoClass.find({
@@ -203,6 +230,36 @@ async function getParentStats(parentId) {
         closedRequirements: closedRequirementsCount,
     };
 }
+const getParentQuickStats = async (req, res) => {
+    try {
+        const parentId = req.user?._id;
+        if (!parentId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required',
+            });
+        }
+        const stats = await getParentStats(parentId);
+        return res.status(200).json({
+            success: true,
+            data: {
+                activeRequirements: stats.activeRequirements,
+                applications: stats.applicationsReceived,
+                shortlisted: stats.shortlistedTutors,
+                demoClasses: stats.demosScheduled,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Get parent quick stats error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch dashboard stats',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.getParentQuickStats = getParentQuickStats;
 function calculateTeacherProfileCompletion(profile) {
     if (!profile)
         return 0;

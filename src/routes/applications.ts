@@ -3,12 +3,17 @@ import {
   applyToRequirement,
   getParentApplications,
   getTeacherApplications,
+  getApplicationById,
   shortlistApplication,
   rejectApplication,
-  acceptApplication,
   withdrawApplication,
+  scheduleDemo,
   getParentDashboardStats,
   getTeacherDashboardStats,
+  getRequirementApplications,
+  viewApplication,
+  selectTeacher,
+  hireTeacher,
 } from '../controllers/applicationController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -38,6 +43,14 @@ router.get(
   getTeacherApplications
 );
 
+// Get single application by ID (Parent or Teacher workflow)
+router.get(
+  '/:applicationId',
+  authenticate,
+  authorize('parent', 'teacher', 'admin'),
+  getApplicationById
+);
+
 // Shortlist application (Parent workflow)
 router.post(
   '/:applicationId/shortlist',
@@ -54,12 +67,28 @@ router.post(
   rejectApplication
 );
 
-// Accept application (Parent workflow)
+// View application (mark as viewed by parent)
 router.post(
-  '/:applicationId/accept',
+  '/:applicationId/view',
   authenticate,
   authorize('parent', 'admin'),
-  acceptApplication
+  viewApplication
+);
+
+// Select teacher (pre-hire step)
+router.post(
+  '/:applicationId/select',
+  authenticate,
+  authorize('parent', 'admin'),
+  selectTeacher
+);
+
+// Hire teacher (finalize)
+router.post(
+  '/:applicationId/hire',
+  authenticate,
+  authorize('parent', 'admin'),
+  hireTeacher
 );
 
 // Withdraw application (Teacher workflow)
@@ -68,6 +97,14 @@ router.post(
   authenticate,
   authorize('teacher'),
   withdrawApplication
+);
+
+// Schedule demo for application (Parent workflow)
+router.post(
+  '/:applicationId/demo',
+  authenticate,
+  authorize('parent', 'admin'),
+  scheduleDemo
 );
 
 // Dashboard stats

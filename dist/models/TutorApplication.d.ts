@@ -5,7 +5,7 @@ export interface ITutorApplication extends Document {
     teacherProfileId: mongoose.Types.ObjectId;
     parentId: mongoose.Types.ObjectId;
     applicationId: string;
-    status: 'pending' | 'shortlisted' | 'rejected' | 'accepted' | 'withdrawn';
+    status: 'pending' | 'viewed' | 'shortlisted' | 'rejected' | 'demo_scheduled' | 'demo_completed' | 'selected' | 'hired' | 'withdrawn';
     message?: string;
     proposedFee?: number;
     proposedSchedule?: {
@@ -16,13 +16,25 @@ export interface ITutorApplication extends Document {
     viewedAt?: Date;
     shortlistedAt?: Date;
     rejectedAt?: Date;
-    acceptedAt?: Date;
+    selectedAt?: Date;
+    hiredAt?: Date;
     rejectionReason?: string;
+    selectionReason?: string;
+    hireNotes?: string;
     demoScheduled: boolean;
     demoId?: mongoose.Types.ObjectId;
+    demoCompletedAt?: Date;
+    demoOutcome?: 'interested' | 'not_interested' | 'need_follow_up';
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
+    markAsViewed(): Promise<ITutorApplication>;
+    markAsShortlisted(): Promise<ITutorApplication>;
+    markAsRejected(reason?: string): Promise<ITutorApplication>;
+    markAsDemoScheduled(demoId: mongoose.Types.ObjectId): Promise<ITutorApplication>;
+    markAsDemoCompleted(outcome: 'interested' | 'not_interested' | 'need_follow_up'): Promise<ITutorApplication>;
+    markAsSelected(reason?: string): Promise<ITutorApplication>;
+    markAsHired(notes?: string): Promise<ITutorApplication>;
 }
 export declare const TutorApplication: mongoose.Model<ITutorApplication, {}, {}, {}, mongoose.Document<unknown, {}, ITutorApplication, {}, mongoose.DefaultSchemaOptions> & ITutorApplication & Required<{
     _id: mongoose.Types.ObjectId;

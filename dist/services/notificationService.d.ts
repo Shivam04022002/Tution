@@ -84,4 +84,95 @@ export declare function notifyLeadUnlockSuccess(teacherUserId: mongoose.Types.Ob
 export declare function notifyAdminRefundRequest(adminUserIds: (mongoose.Types.ObjectId | string)[], requestedAmount: number, refundRequestId: string, entityId: mongoose.Types.ObjectId | string): Promise<void>;
 export declare function notifyAdminTeacherRegistration(adminUserIds: (mongoose.Types.ObjectId | string)[], teacherName: string, teacherId: mongoose.Types.ObjectId | string): Promise<void>;
 export declare function notifyAdminImportCompleted(adminUserIds: (mongoose.Types.ObjectId | string)[], importType: string, count: number, importId: mongoose.Types.ObjectId | string): Promise<void>;
+export declare function notifyContactRequestReceived(teacherUserId: mongoose.Types.ObjectId | string, parentName: string, contactType: string, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyDemoRequestReceived(teacherUserId: mongoose.Types.ObjectId | string, parentName: string, demoDate: Date, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyContactRequestAccepted(parentUserId: mongoose.Types.ObjectId | string, contactType: string, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyContactRequestRejected(parentUserId: mongoose.Types.ObjectId | string, contactType: string, reason: string, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyDemoAccepted(parentUserId: mongoose.Types.ObjectId | string, demoDate: Date, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyDemoRejected(parentUserId: mongoose.Types.ObjectId | string, reason: string, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyDemoCompleted(parentUserId: mongoose.Types.ObjectId | string, outcome: string, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyDemoRescheduled(parentUserId: mongoose.Types.ObjectId | string, newDate: Date, contactRequestId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyApplicationViewed(teacherUserId: mongoose.Types.ObjectId | string, applicationId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyApplicationRejected(teacherUserId: mongoose.Types.ObjectId | string, applicationId: mongoose.Types.ObjectId | string, reason?: string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyTeacherSelected(teacherUserId: mongoose.Types.ObjectId | string, subject: string, applicationId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyTeacherHired(teacherUserId: mongoose.Types.ObjectId | string, subject: string, studentName: string, applicationId: mongoose.Types.ObjectId | string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
+export declare function notifyRequirementClosed(teacherUserId: mongoose.Types.ObjectId | string, requirementId: string, reason: string): Promise<(mongoose.Document<unknown, {}, import("../models/Notification").INotification, {}, mongoose.DefaultSchemaOptions> & import("../models/Notification").INotification & Required<{
+    _id: mongoose.Types.ObjectId;
+}> & {
+    __v: number;
+} & {
+    id: string;
+}) | null>;
 //# sourceMappingURL=notificationService.d.ts.map

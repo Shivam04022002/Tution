@@ -20,8 +20,11 @@ const authenticate = async (req, res, next) => {
         if (decoded.userId) {
             user = await User_1.User.findById(decoded.userId).select('-__v');
         }
-        else if (decoded.firebaseUid) {
-            user = await User_1.User.findOne({ firebaseUid: decoded.firebaseUid }).select('-__v');
+        else {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token format.',
+            });
         }
         if (!user) {
             return res.status(401).json({
@@ -81,10 +84,14 @@ const optionalAuth = async (req, res, next) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
         if (token) {
-            const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
-            const user = await User_1.User.findOne({ firebaseUid: decoded.firebaseUid }).select('-__v');
-            if (user && user.isActive) {
-                req.user = user;
+            try {
+                const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
+                const user = await User_1.User.findById(decoded.userId).select('-__v');
+                if (user && user.isActive) {
+                    req.user = user;
+                }
+            }
+            catch (error) {
             }
         }
         next();

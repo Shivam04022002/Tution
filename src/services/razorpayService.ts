@@ -53,7 +53,7 @@ export interface RazorpayRefundResult {
 export async function createOrder(
   amountInRupees: number,
   receipt: string,
-  notes?: Record<string, string>,
+  notes?: Record<string, string | number | null>,
 ): Promise<RazorpayOrderResult> {
   const instance = getRazorpay();
   const amountInPaise = Math.round(amountInRupees * 100);

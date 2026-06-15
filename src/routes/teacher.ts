@@ -7,14 +7,54 @@ import {
   updateTeacherProfile,
   getAllTeachers,
   getTeacherById,
+  getTeacherGallery,
+  getTeacherStats,
   toggleVacationMode,
   uploadDocuments,
+  getProfileCompletion,
+  getPreferences,
+  updatePreferences,
+  getSubjects,
+  getClasses,
+  getAvailability,
+  updateAvailability,
+  getDiscoverability,
+  updateDiscoverability,
+  getMatchingEligibility,
+  getAvailableRequirements,
+  getRequirementById,
+  getRecommendedRequirements,
+  getRequirementMatchAnalysis,
+  saveRequirement,
+  unsaveRequirement,
+  hideRequirement,
 } from '../controllers/teacherController';
-import { authenticate, authorize } from '../middleware/auth';
+import {
+  getTeacherAnalytics,
+  getTeacherFunnelAnalytics,
+  getTeacherTrendsAnalytics,
+  getTeacherPerformanceAnalytics,
+  getTeacherEarningsAnalytics,
+} from '../controllers/teacherAnalyticsController';
+import {
+  searchTutors,
+  getSearchSuggestions,
+  getPopularSearches,
+} from '../controllers/tutorSearchController';
+import {
+  filterTutors,
+  getFilterOptions,
+} from '../controllers/tutorFilterController';
+import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import {
   registerTeacherValidation,
   updateTeacherValidation,
 } from '../middleware/teacherValidation';
+import {
+  getTutorReviews,
+  getTutorRatings,
+  createReview,
+} from '../controllers/reviewController';
 
 const router = express.Router();
 
@@ -65,9 +105,23 @@ const documentUploadFields = upload.fields([
   { name: 'portfolio', maxCount: 5 },
 ]);
 
-// Public routes
+// Public routes — static paths BEFORE dynamic /:id
 router.get('/', getAllTeachers);
+router.get('/search', searchTutors);
+router.get('/search/suggestions', getSearchSuggestions);
+router.get('/search/popular', getPopularSearches);
+router.get('/filter', filterTutors);
+router.get('/filter/options', getFilterOptions);
+router.get('/subjects', getSubjects);
+router.get('/classes', getClasses);
+
+// Dynamic tutor routes
 router.get('/:id', getTeacherById);
+router.get('/:id/gallery', getTeacherGallery);
+router.get('/:id/stats', getTeacherStats);
+router.get('/:id/reviews', optionalAuth, getTutorReviews);
+router.get('/:id/ratings', optionalAuth, getTutorRatings);
+router.post('/:id/reviews', authenticate, authorize('parent'), createReview);
 
 // Protected routes - Teacher only
 router.post(
@@ -104,5 +158,32 @@ router.post(
   documentUploadFields,
   uploadDocuments
 );
+
+router.get('/completion', authenticate, authorize('teacher'), getProfileCompletion);
+router.get('/preferences', authenticate, authorize('teacher'), getPreferences);
+router.put('/preferences', authenticate, authorize('teacher'), updatePreferences);
+
+// Availability and Discoverability routes
+router.get('/availability', authenticate, authorize('teacher'), getAvailability);
+router.put('/availability', authenticate, authorize('teacher'), updateAvailability);
+router.get('/discoverability', authenticate, authorize('teacher'), getDiscoverability);
+router.put('/discoverability', authenticate, authorize('teacher'), updateDiscoverability);
+router.get('/matching-eligibility', authenticate, authorize('teacher'), getMatchingEligibility);
+
+// Requirements Marketplace routes
+router.get('/requirements/recommended', authenticate, authorize('teacher'), getRecommendedRequirements);
+router.get('/requirements', authenticate, authorize('teacher'), getAvailableRequirements);
+router.get('/requirements/:id/match-analysis', authenticate, authorize('teacher'), getRequirementMatchAnalysis);
+router.post('/requirements/:id/save', authenticate, authorize('teacher'), saveRequirement);
+router.delete('/requirements/:id/save', authenticate, authorize('teacher'), unsaveRequirement);
+router.post('/requirements/:id/hide', authenticate, authorize('teacher'), hideRequirement);
+router.get('/requirements/:id', authenticate, authorize('teacher'), getRequirementById);
+
+// Analytics routes
+router.get('/analytics', authenticate, authorize('teacher'), getTeacherAnalytics);
+router.get('/analytics/funnel', authenticate, authorize('teacher'), getTeacherFunnelAnalytics);
+router.get('/analytics/trends', authenticate, authorize('teacher'), getTeacherTrendsAnalytics);
+router.get('/analytics/performance', authenticate, authorize('teacher'), getTeacherPerformanceAnalytics);
+router.get('/earnings', authenticate, authorize('teacher'), getTeacherEarningsAnalytics);
 
 export default router;

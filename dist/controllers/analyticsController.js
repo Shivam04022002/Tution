@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getFinancialAnalytics = exports.getRevenueAnalytics = exports.getTeacherSupplyAnalytics = exports.getDemandAnalytics = exports.getOverviewAnalytics = void 0;
+exports.getFinancialAnalytics = exports.getSupplyDemandAnalytics = exports.getSubjectAnalytics = exports.getCityAnalytics = exports.getGeographyAnalytics = exports.getRevenueAnalytics = exports.getTeacherSupplyAnalytics = exports.getDemandAnalytics = exports.getOverviewAnalytics = void 0;
 const User_1 = require("../models/User");
 const TeacherProfile_1 = require("../models/TeacherProfile");
 const ParentRequirement_1 = require("../models/ParentRequirement");
@@ -483,6 +483,496 @@ const getRevenueAnalytics = async (req, res) => {
     }
 };
 exports.getRevenueAnalytics = getRevenueAnalytics;
+const getGeographyAnalytics = async (_req, res) => {
+    try {
+        const [requirementsByCity, teachersByCity, matchesByCity, cityCoordinates,] = await Promise.all([
+            ParentRequirement_1.ParentRequirement.aggregate([
+                { $match: { isActive: true, 'location.city': { $ne: '' } } },
+                {
+                    $group: {
+                        _id: '$location.city',
+                        count: { $sum: 1 },
+                        avgBudget: { $avg: '$budget.maxAmount' },
+                        coordinates: {
+                            $first: {
+                                latitude: { $ifNull: ['$location.latitude', 0] },
+                                longitude: { $ifNull: ['$location.longitude', 0] },
+                            },
+                        },
+                    },
+                },
+                { $sort: { count: -1 } },
+                {
+                    $project: {
+                        _id: 0,
+                        city: '$_id',
+                        requirements: '$count',
+                        avgBudget: { $round: ['$avgBudget', 0] },
+                        latitude: '$coordinates.latitude',
+                        longitude: '$coordinates.longitude',
+                    },
+                },
+            ]),
+            TeacherProfile_1.TeacherProfile.aggregate([
+                { $match: { isActive: true, 'locationAvailability.city': { $ne: '' } } },
+                {
+                    $group: {
+                        _id: '$locationAvailability.city',
+                        count: { $sum: 1 },
+                        avgHourlyRate: { $avg: '$pricingRevenue.hourlyRate' },
+                        verifiedCount: {
+                            $sum: { $cond: [{ $eq: ['$verificationStatus', 'verified'] }, 1, 0] },
+                        },
+                        coordinates: {
+                            $first: {
+                                latitude: { $ifNull: ['$locationAvailability.coordinates.latitude', 0] },
+                                longitude: { $ifNull: ['$locationAvailability.coordinates.longitude', 0] },
+                            },
+                        },
+                    },
+                },
+                { $sort: { count: -1 } },
+                {
+                    $project: {
+                        _id: 0,
+                        city: '$_id',
+                        teachers: '$count',
+                        verifiedTeachers: '$verifiedCount',
+                        avgHourlyRate: { $round: ['$avgHourlyRate', 0] },
+                        latitude: '$coordinates.latitude',
+                        longitude: '$coordinates.longitude',
+                    },
+                },
+            ]),
+            TutorMatch_1.TutorMatch.aggregate([
+                { $match: { isActive: true } },
+                {
+                    $lookup: {
+                        from: 'parentrequirements',
+                        localField: 'requirementId',
+                        foreignField: 'requirementId',
+                        as: 'requirement',
+                    },
+                },
+                { $unwind: { path: '$requirement', preserveNullAndEmptyArrays: true } },
+                { $match: { 'requirement.location.city': { $ne: '' } } },
+                {
+                    $group: {
+                        _id: '$requirement.location.city',
+                        matches: { $sum: 1 },
+                        avgMatchScore: { $avg: '$overallScore' },
+                        appliedMatches: {
+                            $sum: { $cond: [{ $eq: ['$status', 'applied'] }, 1, 0] },
+                        },
+                        hiredMatches: {
+                            $sum: { $cond: [{ $eq: ['$status', 'hired'] }, 1, 0] },
+                        },
+                    },
+                },
+                { $sort: { matches: -1 } },
+                {
+                    $project: {
+                        _id: 0,
+                        city: '$_id',
+                        matches: 1,
+                        avgMatchScore: { $round: ['$avgMatchScore', 1] },
+                        appliedMatches: 1,
+                        hiredMatches: 1,
+                    },
+                },
+            ]),
+            ParentRequirement_1.ParentRequirement.aggregate([
+                { $match: { isActive: true, 'location.latitude': { $ne: 0 } } },
+                {
+                    $group: {
+                        _id: '$location.city',
+                        latitude: { $first: '$location.latitude' },
+                        longitude: { $first: '$location.longitude' },
+                    },
+                },
+                { $project: { _id: 0, city: '$_id', latitude: 1, longitude: 1 } },
+            ]),
+        ]);
+        const cityMap = new Map();
+        requirementsByCity.forEach((c) => {
+            cityMap.set(c.city, { ...cityMap.get(c.city), ...c });
+        });
+        teachersByCity.forEach((c) => {
+            cityMap.set(c.city, { ...cityMap.get(c.city), ...c });
+        });
+        matchesByCity.forEach((c) => {
+            cityMap.set(c.city, { ...cityMap.get(c.city), ...c });
+        });
+        cityCoordinates.forEach((c) => {
+            if (cityMap.has(c.city)) {
+                const existing = cityMap.get(c.city);
+                if (!existing.latitude || existing.latitude === 0) {
+                    cityMap.set(c.city, { ...existing, latitude: c.latitude, longitude: c.longitude });
+                }
+            }
+        });
+        const cities = Array.from(cityMap.values()).map((c) => ({
+            ...c,
+            demandSupplyRatio: c.teachers > 0 ? Math.round((c.requirements || 0) / c.teachers * 100) / 100 : 0,
+            status: c.requirements > c.teachers ? 'high-demand' : c.teachers > c.requirements ? 'high-supply' : 'balanced',
+        }));
+        return res.status(200).json({
+            success: true,
+            data: {
+                cities,
+                totalCities: cities.length,
+                highDemandCities: cities.filter((c) => c.status === 'high-demand').length,
+                balancedCities: cities.filter((c) => c.status === 'balanced').length,
+                generatedAt: new Date(),
+            },
+        });
+    }
+    catch (error) {
+        console.error('getGeographyAnalytics error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch geography analytics',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.getGeographyAnalytics = getGeographyAnalytics;
+const getCityAnalytics = async (req, res) => {
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const [cityGrowth, topCitiesByRevenue,] = await Promise.all([
+            ParentRequirement_1.ParentRequirement.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: sinceDate },
+                        'location.city': { $ne: '' },
+                    },
+                },
+                {
+                    $group: {
+                        _id: {
+                            city: '$location.city',
+                            year: { $year: '$createdAt' },
+                            month: { $month: '$createdAt' },
+                            day: { $dayOfMonth: '$createdAt' },
+                        },
+                        newRequirements: { $sum: 1 },
+                    },
+                },
+                {
+                    $group: {
+                        _id: '$_id.city',
+                        dailyGrowth: { $push: { date: { year: '$_id.year', month: '$_id.month', day: '$_id.day' }, count: '$newRequirements' } },
+                        totalNew: { $sum: '$newRequirements' },
+                    },
+                },
+                { $sort: { totalNew: -1 } },
+                { $limit: 20 },
+                {
+                    $project: {
+                        _id: 0,
+                        city: '$_id',
+                        totalNewRequirements: '$totalNew',
+                        dailyGrowth: 1,
+                    },
+                },
+            ]),
+            Payment_1.Payment.aggregate([
+                {
+                    $match: {
+                        status: 'completed',
+                        type: 'lead_unlock',
+                        createdAt: { $gte: sinceDate },
+                    },
+                },
+                {
+                    $lookup: {
+                        from: 'teacherprofiles',
+                        localField: 'userId',
+                        foreignField: 'userId',
+                        as: 'teacher',
+                    },
+                },
+                { $unwind: { path: '$teacher', preserveNullAndEmptyArrays: true } },
+                { $match: { 'teacher.locationAvailability.city': { $ne: '' } } },
+                {
+                    $group: {
+                        _id: '$teacher.locationAvailability.city',
+                        revenue: { $sum: '$totalAmount' },
+                        unlocks: { $sum: 1 },
+                    },
+                },
+                { $sort: { revenue: -1 } },
+                { $limit: 10 },
+                {
+                    $project: {
+                        _id: 0,
+                        city: '$_id',
+                        revenue: 1,
+                        leadUnlocks: '$unlocks',
+                    },
+                },
+            ]),
+        ]);
+        return res.status(200).json({
+            success: true,
+            data: {
+                cityGrowth,
+                topCitiesByRevenue,
+                periodDays: days,
+                generatedAt: new Date(),
+            },
+        });
+    }
+    catch (error) {
+        console.error('getCityAnalytics error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch city analytics',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.getCityAnalytics = getCityAnalytics;
+const getSubjectAnalytics = async (_req, res) => {
+    try {
+        const [subjectDemand, subjectSupply, subjectByCity,] = await Promise.all([
+            ParentRequirement_1.ParentRequirement.aggregate([
+                { $match: { isActive: true } },
+                { $unwind: '$subjects' },
+                {
+                    $group: {
+                        _id: '$subjects',
+                        demand: { $sum: 1 },
+                        avgBudget: { $avg: '$budget.maxAmount' },
+                        cities: { $addToSet: '$location.city' },
+                    },
+                },
+                { $sort: { demand: -1 } },
+                { $limit: 20 },
+                {
+                    $project: {
+                        _id: 0,
+                        subject: '$_id',
+                        demand: 1,
+                        avgBudget: { $round: ['$avgBudget', 0] },
+                        cityCount: { $size: '$cities' },
+                    },
+                },
+            ]),
+            TeacherProfile_1.TeacherProfile.aggregate([
+                { $match: { isActive: true } },
+                { $unwind: '$teachingDetails.subjects' },
+                {
+                    $group: {
+                        _id: '$teachingDetails.subjects',
+                        supply: { $sum: 1 },
+                        verifiedTeachers: {
+                            $sum: { $cond: [{ $eq: ['$verificationStatus', 'verified'] }, 1, 0] },
+                        },
+                        avgHourlyRate: { $avg: '$pricingRevenue.hourlyRate' },
+                    },
+                },
+                { $sort: { supply: -1 } },
+                { $limit: 20 },
+                {
+                    $project: {
+                        _id: 0,
+                        subject: '$_id',
+                        supply: 1,
+                        verifiedTeachers: 1,
+                        avgHourlyRate: { $round: ['$avgHourlyRate', 0] },
+                    },
+                },
+            ]),
+            ParentRequirement_1.ParentRequirement.aggregate([
+                { $match: { isActive: true, 'location.city': { $ne: '' } } },
+                { $unwind: '$subjects' },
+                {
+                    $group: {
+                        _id: { subject: '$subjects', city: '$location.city' },
+                        count: { $sum: 1 },
+                    },
+                },
+                { $sort: { count: -1 } },
+                { $limit: 50 },
+                {
+                    $project: {
+                        _id: 0,
+                        subject: '$_id.subject',
+                        city: '$_id.city',
+                        requirements: '$count',
+                    },
+                },
+            ]),
+        ]);
+        const demandMap = new Map(subjectDemand.map((s) => [s.subject, s]));
+        const supplyMap = new Map(subjectSupply.map((s) => [s.subject, s]));
+        const allSubjects = new Set([...demandMap.keys(), ...supplyMap.keys()]);
+        const supplyDemandGap = Array.from(allSubjects).map((subject) => {
+            const demand = demandMap.get(subject)?.demand || 0;
+            const supply = supplyMap.get(subject)?.supply || 0;
+            const gap = demand - supply;
+            return {
+                subject,
+                demand,
+                supply,
+                gap,
+                gapPercentage: demand > 0 ? Math.round((gap / demand) * 100) : 0,
+                status: gap > 0 ? 'shortage' : gap < 0 ? 'surplus' : 'balanced',
+                avgBudget: demandMap.get(subject)?.avgBudget || 0,
+                avgHourlyRate: supplyMap.get(subject)?.avgHourlyRate || 0,
+            };
+        }).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+        return res.status(200).json({
+            success: true,
+            data: {
+                subjectDemand,
+                subjectSupply,
+                supplyDemandGap,
+                subjectByCity,
+                topShortages: supplyDemandGap.filter((s) => s.status === 'shortage').slice(0, 5),
+                topSurpluses: supplyDemandGap.filter((s) => s.status === 'surplus').slice(0, 5),
+                generatedAt: new Date(),
+            },
+        });
+    }
+    catch (error) {
+        console.error('getSubjectAnalytics error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch subject analytics',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.getSubjectAnalytics = getSubjectAnalytics;
+const getSupplyDemandAnalytics = async (req, res) => {
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const [overallStats, demandTrend, supplyTrend, fastGrowingCities,] = await Promise.all([
+            Promise.all([
+                ParentRequirement_1.ParentRequirement.countDocuments({ isActive: true }),
+                TeacherProfile_1.TeacherProfile.countDocuments({ isActive: true }),
+                ParentRequirement_1.ParentRequirement.countDocuments({ createdAt: { $gte: sinceDate } }),
+                TeacherProfile_1.TeacherProfile.countDocuments({ createdAt: { $gte: sinceDate } }),
+            ]),
+            ParentRequirement_1.ParentRequirement.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: sinceDate },
+                    },
+                },
+                {
+                    $group: {
+                        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+                        count: { $sum: 1 },
+                    },
+                },
+                { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+                {
+                    $project: {
+                        _id: 0,
+                        date: { year: '$_id.year', month: '$_id.month', day: '$_id.day' },
+                        newRequirements: '$count',
+                    },
+                },
+            ]),
+            TeacherProfile_1.TeacherProfile.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: sinceDate },
+                    },
+                },
+                {
+                    $group: {
+                        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+                        count: { $sum: 1 },
+                    },
+                },
+                { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+                {
+                    $project: {
+                        _id: 0,
+                        date: { year: '$_id.year', month: '$_id.month', day: '$_id.day' },
+                        newTeachers: '$count',
+                    },
+                },
+            ]),
+            ParentRequirement_1.ParentRequirement.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
+                        'location.city': { $ne: '' },
+                    },
+                },
+                {
+                    $group: {
+                        _id: '$location.city',
+                        last7Days: {
+                            $sum: {
+                                $cond: [{ $gte: ['$createdAt', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)] }, 1, 0],
+                            },
+                        },
+                        last30Days: {
+                            $sum: {
+                                $cond: [{ $gte: ['$createdAt', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)] }, 1, 0],
+                            },
+                        },
+                        last90Days: { $sum: 1 },
+                    },
+                },
+                { $sort: { last30Days: -1 } },
+                { $limit: 15 },
+                {
+                    $project: {
+                        _id: 0,
+                        city: '$_id',
+                        last7Days: 1,
+                        last30Days: 1,
+                        last90Days: 1,
+                        growthRate30d: {
+                            $cond: [
+                                { $gt: ['$last90Days', 0] },
+                                { $multiply: [{ $divide: ['$last30Days', { $divide: ['$last90Days', 3] }] }, 100] },
+                                0,
+                            ],
+                        },
+                    },
+                },
+            ]),
+        ]);
+        const [totalRequirements, totalTeachers, newRequirements, newTeachers] = overallStats;
+        return res.status(200).json({
+            success: true,
+            data: {
+                overall: {
+                    totalRequirements,
+                    totalTeachers,
+                    newRequirements,
+                    newTeachers,
+                    supplyDemandRatio: totalRequirements > 0 ? Math.round((totalTeachers / totalRequirements) * 100) / 100 : 0,
+                },
+                demandTrend,
+                supplyTrend,
+                fastGrowingCities,
+                periodDays: days,
+                generatedAt: new Date(),
+            },
+        });
+    }
+    catch (error) {
+        console.error('getSupplyDemandAnalytics error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch supply-demand analytics',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+exports.getSupplyDemandAnalytics = getSupplyDemandAnalytics;
 const getFinancialAnalytics = async (_req, res) => {
     try {
         const [grossResult, _gstResult, refundedResult, pendingResult, invoiceGstBreakdown, monthlyNet, refundStats, promoStats, promoTopCodes, monthlyRefunds,] = await Promise.all([

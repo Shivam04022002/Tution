@@ -107,7 +107,8 @@ const unlockTeacherLead = async (req, res) => {
         if (!requirement) {
             return res.status(404).json({ success: false, message: 'Requirement not found.' });
         }
-        if (requirement.status !== 'active' || !requirement.isActive) {
+        const validStatuses = ['published', 'receiving_applications', 'shortlisted', 'demo_scheduled'];
+        if (!validStatuses.includes(requirement.status) || !requirement.isActive) {
             return res.status(400).json({ success: false, message: 'Requirement is no longer active.' });
         }
         const alreadyUnlocked = await (0, contactAccessService_1.canTeacherViewParentContact)(teacherProfile._id, requirement._id);

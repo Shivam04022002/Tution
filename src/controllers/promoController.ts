@@ -13,10 +13,12 @@ export const validatePromoCode = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Auth required.' });
 
-    const { code, type, baseAmount } = req.body as {
+    const { code, type, baseAmount, planName, packId } = req.body as {
       code: string;
-      type: string;       // 'unlock_lead' | 'unlock_tutor'
+      type: string;       // 'unlock_lead' | 'unlock_tutor' | 'subscription' | 'credit_pack'
       baseAmount: number;
+      planName?: string;
+      packId?: string;
     };
 
     if (!code || !type || baseAmount == null) {
@@ -32,6 +34,8 @@ export const validatePromoCode = async (req: AuthRequest, res: Response) => {
       req.user._id as mongoose.Types.ObjectId,
       baseAmount,
       type,
+      planName,
+      packId,
     );
 
     if (!valid) {
@@ -39,6 +43,10 @@ export const validatePromoCode = async (req: AuthRequest, res: Response) => {
     }
 
     const discount = promo.computeDiscount(baseAmount);
+    const discountedBase = baseAmount - discount;
+    const gstRate = 0.18;
+    const gstAmount = Math.round(discountedBase * gstRate);
+    const totalAmount = discountedBase + gstAmount;
 
     return res.status(200).json({
       success: true,
@@ -48,13 +56,103 @@ export const validatePromoCode = async (req: AuthRequest, res: Response) => {
         discountType:   promo.discountType,
         discountValue:  promo.discountValue,
         discount,
-        discountedBase: baseAmount - discount,
+        discountedBase,
+        gstAmount,
+        totalAmount,
         validTo:        promo.validTo,
       },
     });
   } catch (error) {
     console.error('validatePromoCode error:', error);
     return res.status(500).json({ success: false, message: 'Failed to validate promo code.' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/promos/apply
+// Apply a promo code during checkout (records usage intent, tracks analytics)
+// Body: { code, type, baseAmount, planName?, packId?, orderId? }
+// ─────────────────────────────────────────────────────────────────────────────
+export const applyPromoCode = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Auth required.' });
+
+    const { code, type, baseAmount, planName, packId, orderId } = req.body as {
+      code: string;
+      type: string;
+      baseAmount: number;
+      planName?: string;
+      packId?: string;
+      orderId?: string;
+    };
+
+    if (!code || !type || baseAmount == null) {
+      return res.status(400).json({ success: false, message: 'code, type, and baseAmount are required.' });
+    }
+
+    const promo = await PromoCode.findOne({ code: code.trim().toUpperCase() });
+    if (!promo) {
+      return res.status(404).json({ success: false, message: 'Promo code not found.' });
+    }
+
+    const { valid, error } = await promo.isValid(
+      req.user._id as mongoose.Types.ObjectId,
+      baseAmount,
+      type,
+      planName,
+      packId,
+    );
+
+    if (!valid) {
+      // Log failed promo application
+      await AuditLog.create({
+        adminId: req.user._id,
+        action: 'PROMO_APPLY_FAILED',
+        entityType: 'PromoCode',
+        entityId: promo._id,
+        details: { code, type, baseAmount, planName, packId, error, orderId },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.status(400).json({ success: false, message: error || 'Promo code is not valid.' });
+    }
+
+    const discount = promo.computeDiscount(baseAmount);
+    const discountedBase = baseAmount - discount;
+    const gstRate = 0.18;
+    const gstAmount = Math.round(discountedBase * gstRate);
+    const totalAmount = discountedBase + gstAmount;
+
+    // Log successful promo application
+    await AuditLog.create({
+      adminId: req.user._id,
+      action: 'PROMO_APPLIED',
+      entityType: 'PromoCode',
+      entityId: promo._id,
+      details: { code, type, baseAmount, discount, discountedBase, gstAmount, totalAmount, planName, packId, orderId },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        code: promo.code,
+        description: promo.description,
+        discountType: promo.discountType,
+        discountValue: promo.discountValue,
+        discount,
+        discountedBase,
+        gstAmount,
+        totalAmount,
+        savingsPercentage: baseAmount > 0 ? Math.round((discount / baseAmount) * 100) : 0,
+        appliedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error('applyPromoCode error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to apply promo code.' });
   }
 };
 
@@ -103,8 +201,8 @@ export const createPromoCode = async (req: AuthRequest, res: Response) => {
 
     const {
       code, description, discountType, discountValue,
-      maxDiscountAmount, applicableTo, minOrderAmount,
-      usageLimit, perUserLimit, validFrom, validTo,
+      maxDiscountAmount, applicableTo, applicablePlans, applicablePacks,
+      minOrderAmount, usageLimit, perUserLimit, validFrom, validTo,
       restrictedToUserIds,
     } = req.body;
 
@@ -131,6 +229,8 @@ export const createPromoCode = async (req: AuthRequest, res: Response) => {
       discountValue,
       maxDiscountAmount:   maxDiscountAmount || undefined,
       applicableTo:        applicableTo || 'all',
+      applicablePlans:     applicablePlans || [],
+      applicablePacks:     applicablePacks || [],
       minOrderAmount:      minOrderAmount || 0,
       usageLimit:          usageLimit || 1000,
       perUserLimit:        perUserLimit || 1,
@@ -161,6 +261,7 @@ export const updatePromoCode = async (req: AuthRequest, res: Response) => {
       'description', 'isActive', 'validFrom', 'validTo',
       'usageLimit', 'perUserLimit', 'maxDiscountAmount',
       'minOrderAmount', 'restrictedToUserIds',
+      'applicablePlans', 'applicablePacks', 'applicableTo',
     ];
 
     const updates: Record<string, any> = {};

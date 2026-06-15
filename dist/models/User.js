@@ -65,7 +65,7 @@ const userSchema = new mongoose_1.Schema({
     },
     role: {
         type: String,
-        enum: ['parent', 'teacher', 'admin'],
+        enum: ['parent', 'teacher', 'admin', 'staff'],
         required: true,
         default: 'parent',
     },
@@ -91,6 +91,10 @@ const userSchema = new mongoose_1.Schema({
         gender: {
             type: String,
             enum: ['male', 'female', 'other'],
+            default: null,
+        },
+        department: {
+            type: String,
             default: null,
         },
     },
@@ -125,6 +129,10 @@ const userSchema = new mongoose_1.Schema({
         default: true,
     },
     isVerified: {
+        type: Boolean,
+        default: false,
+    },
+    isBlocked: {
         type: Boolean,
         default: false,
     },

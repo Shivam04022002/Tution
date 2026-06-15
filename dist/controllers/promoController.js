@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deactivatePromoCode = exports.updatePromoCode = exports.createPromoCode = exports.listPromoCodes = exports.validatePromoCode = void 0;
+exports.deactivatePromoCode = exports.updatePromoCode = exports.createPromoCode = exports.listPromoCodes = exports.applyPromoCode = exports.validatePromoCode = void 0;
 const PromoCode_1 = require("../models/PromoCode");
+const AuditLog_1 = require("../models/AuditLog");
 const validatePromoCode = async (req, res) => {
     try {
         if (!req.user)
             return res.status(401).json({ success: false, message: 'Auth required.' });
-        const { code, type, baseAmount } = req.body;
+        const { code, type, baseAmount, planName, packId } = req.body;
         if (!code || !type || baseAmount == null) {
             return res.status(400).json({ success: false, message: 'code, type, and baseAmount are required.' });
         }
@@ -14,11 +15,15 @@ const validatePromoCode = async (req, res) => {
         if (!promo) {
             return res.status(404).json({ success: false, message: 'Promo code not found.' });
         }
-        const { valid, error } = await promo.isValid(req.user._id, baseAmount, type);
+        const { valid, error } = await promo.isValid(req.user._id, baseAmount, type, planName, packId);
         if (!valid) {
             return res.status(400).json({ success: false, message: error || 'Promo code is not valid.' });
         }
         const discount = promo.computeDiscount(baseAmount);
+        const discountedBase = baseAmount - discount;
+        const gstRate = 0.18;
+        const gstAmount = Math.round(discountedBase * gstRate);
+        const totalAmount = discountedBase + gstAmount;
         return res.status(200).json({
             success: true,
             data: {
@@ -27,7 +32,9 @@ const validatePromoCode = async (req, res) => {
                 discountType: promo.discountType,
                 discountValue: promo.discountValue,
                 discount,
-                discountedBase: baseAmount - discount,
+                discountedBase,
+                gstAmount,
+                totalAmount,
                 validTo: promo.validTo,
             },
         });
@@ -38,6 +45,67 @@ const validatePromoCode = async (req, res) => {
     }
 };
 exports.validatePromoCode = validatePromoCode;
+const applyPromoCode = async (req, res) => {
+    try {
+        if (!req.user)
+            return res.status(401).json({ success: false, message: 'Auth required.' });
+        const { code, type, baseAmount, planName, packId, orderId } = req.body;
+        if (!code || !type || baseAmount == null) {
+            return res.status(400).json({ success: false, message: 'code, type, and baseAmount are required.' });
+        }
+        const promo = await PromoCode_1.PromoCode.findOne({ code: code.trim().toUpperCase() });
+        if (!promo) {
+            return res.status(404).json({ success: false, message: 'Promo code not found.' });
+        }
+        const { valid, error } = await promo.isValid(req.user._id, baseAmount, type, planName, packId);
+        if (!valid) {
+            await AuditLog_1.AuditLog.create({
+                adminId: req.user._id,
+                action: 'PROMO_APPLY_FAILED',
+                entityType: 'PromoCode',
+                entityId: promo._id,
+                details: { code, type, baseAmount, planName, packId, error, orderId },
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent'],
+            });
+            return res.status(400).json({ success: false, message: error || 'Promo code is not valid.' });
+        }
+        const discount = promo.computeDiscount(baseAmount);
+        const discountedBase = baseAmount - discount;
+        const gstRate = 0.18;
+        const gstAmount = Math.round(discountedBase * gstRate);
+        const totalAmount = discountedBase + gstAmount;
+        await AuditLog_1.AuditLog.create({
+            adminId: req.user._id,
+            action: 'PROMO_APPLIED',
+            entityType: 'PromoCode',
+            entityId: promo._id,
+            details: { code, type, baseAmount, discount, discountedBase, gstAmount, totalAmount, planName, packId, orderId },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+        return res.status(200).json({
+            success: true,
+            data: {
+                code: promo.code,
+                description: promo.description,
+                discountType: promo.discountType,
+                discountValue: promo.discountValue,
+                discount,
+                discountedBase,
+                gstAmount,
+                totalAmount,
+                savingsPercentage: baseAmount > 0 ? Math.round((discount / baseAmount) * 100) : 0,
+                appliedAt: new Date(),
+            },
+        });
+    }
+    catch (error) {
+        console.error('applyPromoCode error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to apply promo code.' });
+    }
+};
+exports.applyPromoCode = applyPromoCode;
 const listPromoCodes = async (req, res) => {
     try {
         if (!req.user || req.user.role !== 'admin') {
@@ -70,7 +138,7 @@ const createPromoCode = async (req, res) => {
         if (!req.user || req.user.role !== 'admin') {
             return res.status(403).json({ success: false, message: 'Admin access required.' });
         }
-        const { code, description, discountType, discountValue, maxDiscountAmount, applicableTo, minOrderAmount, usageLimit, perUserLimit, validFrom, validTo, restrictedToUserIds, } = req.body;
+        const { code, description, discountType, discountValue, maxDiscountAmount, applicableTo, applicablePlans, applicablePacks, minOrderAmount, usageLimit, perUserLimit, validFrom, validTo, restrictedToUserIds, } = req.body;
         if (!code || !description || !discountType || discountValue == null || !validFrom || !validTo) {
             return res.status(400).json({ success: false, message: 'Missing required fields.' });
         }
@@ -91,6 +159,8 @@ const createPromoCode = async (req, res) => {
             discountValue,
             maxDiscountAmount: maxDiscountAmount || undefined,
             applicableTo: applicableTo || 'all',
+            applicablePlans: applicablePlans || [],
+            applicablePacks: applicablePacks || [],
             minOrderAmount: minOrderAmount || 0,
             usageLimit: usageLimit || 1000,
             perUserLimit: perUserLimit || 1,
@@ -116,6 +186,7 @@ const updatePromoCode = async (req, res) => {
             'description', 'isActive', 'validFrom', 'validTo',
             'usageLimit', 'perUserLimit', 'maxDiscountAmount',
             'minOrderAmount', 'restrictedToUserIds',
+            'applicablePlans', 'applicablePacks', 'applicableTo',
         ];
         const updates = {};
         for (const key of allowedFields) {

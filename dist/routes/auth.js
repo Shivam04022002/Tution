@@ -54,8 +54,8 @@ const loginValidation = [
 ];
 const signupValidation = [
     (0, express_validator_1.body)('role')
-        .isIn(['parent', 'teacher', 'admin'])
-        .withMessage('Role must be parent, teacher, or admin'),
+        .isIn(['parent', 'teacher'])
+        .withMessage('Role must be parent or teacher'),
     (0, express_validator_1.body)('fullName')
         .isLength({ min: 2, max: 100 })
         .withMessage('Full name must be between 2 and 100 characters'),
@@ -94,5 +94,6 @@ router.post('/register-complete', registerCompleteValidation, authController_1.r
 router.get('/me', auth_1.authenticate, authController_1.getCurrentUser);
 router.put('/profile', auth_1.authenticate, updateProfileValidation, authController_1.updateProfile);
 router.post('/logout', auth_1.authenticate, authController_1.logout);
+router.post('/check-duplicate', authController_1.checkDuplicate);
 exports.default = router;
 //# sourceMappingURL=auth.js.map

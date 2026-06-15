@@ -8,5 +8,6 @@ const auth_1 = require("../middleware/auth");
 const promoController_1 = require("../controllers/promoController");
 const router = express_1.default.Router();
 router.post('/validate', auth_1.authenticate, (0, auth_1.authorize)('teacher', 'parent'), promoController_1.validatePromoCode);
+router.post('/apply', auth_1.authenticate, (0, auth_1.authorize)('teacher', 'parent'), promoController_1.applyPromoCode);
 exports.default = router;
 //# sourceMappingURL=promos.js.map

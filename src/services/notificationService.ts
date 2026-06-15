@@ -289,3 +289,258 @@ export async function notifyAdminImportCompleted(
     entityType: 'ImportHistory',
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contact & Demo Request Notifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Teacher: received a contact request (call, whatsapp, message)
+export async function notifyContactRequestReceived(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  parentName: string,
+  contactType: string,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  const typeLabels: Record<string, string> = {
+    call: 'phone call',
+    whatsapp: 'WhatsApp message',
+    message: 'message',
+  };
+
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'CONTACT_REQUEST_RECEIVED',
+    category:   'application',
+    title:      'New Contact Request',
+    body:       `${parentName} wants to connect via ${typeLabels[contactType] || 'message'}.`,
+    data:       { screen: 'ContactRequests', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Teacher: received a demo request
+export async function notifyDemoRequestReceived(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  parentName: string,
+  demoDate: Date,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'DEMO_REQUEST_RECEIVED',
+    category:   'demo',
+    title:      'New Demo Request',
+    body:       `${parentName} requested a demo class on ${demoDate.toLocaleDateString('en-IN')}.`,
+    data:       { screen: 'DemoRequests', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Parent: contact request accepted
+export async function notifyContactRequestAccepted(
+  parentUserId: mongoose.Types.ObjectId | string,
+  contactType: string,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     parentUserId,
+    type:       'CONTACT_REQUEST_ACCEPTED',
+    category:   'application',
+    title:      'Contact Request Accepted',
+    body:       `Teacher accepted your ${contactType} request. You can now connect.`,
+    data:       { screen: 'ContactHistory', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Parent: contact request rejected
+export async function notifyContactRequestRejected(
+  parentUserId: mongoose.Types.ObjectId | string,
+  contactType: string,
+  reason: string,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     parentUserId,
+    type:       'CONTACT_REQUEST_REJECTED',
+    category:   'application',
+    title:      'Contact Request Declined',
+    body:       reason || `Teacher declined your ${contactType} request.`,
+    data:       { screen: 'ContactHistory', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Parent: demo request accepted
+export async function notifyDemoAccepted(
+  parentUserId: mongoose.Types.ObjectId | string,
+  demoDate: Date,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     parentUserId,
+    type:       'DEMO_REQUEST_ACCEPTED',
+    category:   'demo',
+    title:      'Demo Request Accepted',
+    body:       `Teacher accepted your demo request for ${demoDate.toLocaleDateString('en-IN')}.`,
+    data:       { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Parent: demo request rejected
+export async function notifyDemoRejected(
+  parentUserId: mongoose.Types.ObjectId | string,
+  reason: string,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     parentUserId,
+    type:       'DEMO_REQUEST_REJECTED',
+    category:   'demo',
+    title:      'Demo Request Declined',
+    body:       reason || 'Teacher declined your demo request.',
+    data:       { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Parent: demo completed by teacher
+export async function notifyDemoCompleted(
+  parentUserId: mongoose.Types.ObjectId | string,
+  outcome: string,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  const outcomeLabels: Record<string, string> = {
+    interested:     'Teacher marked the demo complete — they are interested!',
+    not_interested: 'Teacher has marked the demo as complete.',
+    need_follow_up: 'Teacher marked the demo complete and wants a follow-up.',
+  };
+  return sendNotification({
+    userId:     parentUserId,
+    type:       'DEMO_COMPLETED',
+    category:   'demo',
+    title:      'Demo Class Completed',
+    body:       outcomeLabels[outcome] || 'Your demo class has been marked complete.',
+    data:       { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// Parent: demo rescheduled by teacher
+export async function notifyDemoRescheduled(
+  parentUserId: mongoose.Types.ObjectId | string,
+  newDate: Date,
+  contactRequestId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     parentUserId,
+    type:       'DEMO_RESCHEDULED_BY_TEACHER',
+    category:   'demo',
+    title:      'Demo Rescheduled',
+    body:       `Teacher rescheduled the demo to ${newDate.toLocaleDateString('en-IN')}.`,
+    data:       { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+    entityId:   contactRequestId,
+    entityType: 'ContactRequest',
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hiring Workflow Notifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Teacher: application viewed by parent
+export async function notifyApplicationViewed(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  applicationId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'APPLICATION_VIEWED',
+    category:   'application',
+    title:      'Application Viewed',
+    body:       'A parent has viewed your application.',
+    data:       { screen: 'Applications', applicationId: String(applicationId) },
+    entityId:   applicationId,
+    entityType: 'TutorApplication',
+  });
+}
+
+// Teacher: application rejected by parent
+export async function notifyApplicationRejected(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  applicationId: mongoose.Types.ObjectId | string,
+  reason?: string,
+) {
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'APPLICATION_REJECTED',
+    category:   'application',
+    title:      'Application Not Selected',
+    body:       reason || 'Your application was not selected for this requirement.',
+    data:       { screen: 'Applications', applicationId: String(applicationId) },
+    entityId:   applicationId,
+    entityType: 'TutorApplication',
+  });
+}
+
+// Teacher: selected for requirement (pre-hire)
+export async function notifyTeacherSelected(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  subject: string,
+  applicationId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'TEACHER_SELECTED',
+    category:   'application',
+    title:      'You Have Been Selected!',
+    body:       `Congratulations! You have been selected for the ${subject} requirement. Awaiting final confirmation.`,
+    data:       { screen: 'Applications', applicationId: String(applicationId) },
+    entityId:   applicationId,
+    entityType: 'TutorApplication',
+  });
+}
+
+// Teacher: hired for requirement
+export async function notifyTeacherHired(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  subject: string,
+  studentName: string,
+  applicationId: mongoose.Types.ObjectId | string,
+) {
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'TEACHER_HIRED',
+    category:   'application',
+    title:      'You Are Hired!',
+    body:       `Congratulations! You have been hired to teach ${subject} to ${studentName}.`,
+    data:       { screen: 'Classes', applicationId: String(applicationId) },
+    entityId:   applicationId,
+    entityType: 'TutorApplication',
+  });
+}
+
+// Teacher: requirement closed (they were not selected)
+export async function notifyRequirementClosed(
+  teacherUserId: mongoose.Types.ObjectId | string,
+  requirementId: string,
+  reason: string,
+) {
+  return sendNotification({
+    userId:     teacherUserId,
+    type:       'REQUIREMENT_CLOSED',
+    category:   'application',
+    title:      'Requirement Closed',
+    body:       `Requirement ${requirementId} has been closed. ${reason}`,
+    data:       { screen: 'Applications' },
+    entityType: 'ParentRequirement',
+  });
+}

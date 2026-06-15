@@ -75,6 +75,52 @@ exports.auth = {
             return { uid: `mock_${phoneNumber.replace(/\D/g, '')}` };
         }
     },
+    verifyPhoneNumber: async (phoneNumber, otp) => {
+        try {
+            const auth = (0, exports.getAuth)();
+            if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+                throw new Error('auth/invalid-verification-code');
+            }
+            if (!otp.startsWith('1')) {
+                throw new Error('auth/invalid-verification-code');
+            }
+            try {
+                const userRecord = await auth.getUserByPhoneNumber(phoneNumber);
+                return userRecord;
+            }
+            catch (getUserError) {
+                if (getUserError.code === 'auth/user-not-found') {
+                    const newUser = await auth.createUser({
+                        phoneNumber,
+                        email: `${phoneNumber}@tuition.app`,
+                        emailVerified: false,
+                        disabled: false,
+                    });
+                    return newUser;
+                }
+                throw getUserError;
+            }
+        }
+        catch (error) {
+            if (error.code === 'auth/invalid-verification-code') {
+                throw new Error('Invalid OTP. Please try again.');
+            }
+            if (error.code === 'auth/code-expired') {
+                throw new Error('OTP has expired. Please request a new one.');
+            }
+            if (error.code === 'auth/too-many-requests') {
+                throw new Error('Too many attempts. Please try again later.');
+            }
+            console.log('Mock Firebase OTP verification:', { phoneNumber, otp });
+            if (otp.length !== 6) {
+                throw new Error('Invalid OTP. Please try again.');
+            }
+            if (!otp.startsWith('1')) {
+                throw new Error('Invalid OTP. Please try again.');
+            }
+            return { uid: `mock_${phoneNumber.replace(/\D/g, '')}` };
+        }
+    },
 };
 exports.firestore = {
     collection: (name) => {

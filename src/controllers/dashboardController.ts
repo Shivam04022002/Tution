@@ -34,9 +34,9 @@ export const getParentDashboard = async (req: AuthRequest, res: Response) => {
       // Active requirements
       ParentRequirement.find({
         parentId,
-        status: 'active',
+        status: 'active' as any,
         isActive: true,
-      }).sort({ createdAt: -1 }),
+      } as any).sort({ createdAt: -1 }),
 
       // Applications received
       TutorApplication.find({
@@ -201,8 +201,8 @@ export const getTeacherDashboard = async (req: AuthRequest, res: Response) => {
       // Active students (from ScheduledClass)
       ScheduledClass.find({
         teacherId,
-        status: 'active',
-      })
+        status: 'active' as any,
+      } as any)
         .populate({
           path: 'parentId',
           select: 'profile.parentName',
@@ -253,9 +253,9 @@ async function getParentStats(parentId: any) {
   ] = await Promise.all([
     ParentRequirement.countDocuments({
       parentId,
-      status: 'active',
+      status: 'active' as any,
       isActive: true,
-    }),
+    } as any),
     TutorApplication.countDocuments({
       parentId,
       isActive: true,
@@ -284,6 +284,39 @@ async function getParentStats(parentId: any) {
     closedRequirements: closedRequirementsCount,
   };
 }
+
+// Parent Quick Stats - Lightweight endpoint for dashboard stats only
+export const getParentQuickStats = async (req: AuthRequest, res: Response) => {
+  try {
+    const parentId = req.user?._id;
+
+    if (!parentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    const stats = await getParentStats(parentId);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        activeRequirements: stats.activeRequirements,
+        applications: stats.applicationsReceived,
+        shortlisted: stats.shortlistedTutors,
+        demoClasses: stats.demosScheduled,
+      },
+    });
+  } catch (error) {
+    console.error('Get parent quick stats error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard stats',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
 
 // Helper: Calculate teacher profile completion percentage
 function calculateTeacherProfileCompletion(profile: any): number {

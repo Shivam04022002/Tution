@@ -44,7 +44,7 @@ export interface IParentRequirement extends Document {
     maxAmount: number;
     negotiationAllowed: boolean;
   };
-  status: 'active' | 'closed' | 'expired' | 'paused';
+  status: 'draft' | 'published' | 'receiving_applications' | 'shortlisted' | 'demo_scheduled' | 'teacher_selected' | 'hired' | 'closed' | 'cancelled' | 'expired' | 'paused';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   matchedTutors: Array<{
     tutorId: mongoose.Types.ObjectId;
@@ -57,6 +57,19 @@ export interface IParentRequirement extends Document {
   totalMatches: number;
   views: number;
   unlocks: number;
+  
+  // Hiring workflow fields
+  applicationsCount: number;
+  shortlistedCount: number;
+  demosScheduledCount: number;
+  demosCompletedCount: number;
+  hiredTeacherId?: mongoose.Types.ObjectId;
+  hiredTeacherProfileId?: mongoose.Types.ObjectId;
+  hiredAt?: Date;
+  hireReason?: string;
+  closedReason?: string;
+  closedAt?: Date;
+  
   isActive: boolean;
   expiresAt: Date;
   createdAt: Date;
@@ -228,8 +241,48 @@ const ParentRequirementSchema: Schema = new Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'closed', 'expired', 'paused'],
-    default: 'active',
+    enum: ['draft', 'published', 'receiving_applications', 'shortlisted', 'demo_scheduled', 'teacher_selected', 'hired', 'closed', 'cancelled', 'expired', 'paused'],
+    default: 'published',
+  },
+  applicationsCount: {
+    type: Number,
+    default: 0,
+  },
+  shortlistedCount: {
+    type: Number,
+    default: 0,
+  },
+  demosScheduledCount: {
+    type: Number,
+    default: 0,
+  },
+  demosCompletedCount: {
+    type: Number,
+    default: 0,
+  },
+  hiredTeacherId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  hiredTeacherProfileId: {
+    type: Schema.Types.ObjectId,
+    ref: 'TeacherProfile',
+  },
+  hiredAt: {
+    type: Date,
+  },
+  hireReason: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+  },
+  closedReason: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+  },
+  closedAt: {
+    type: Date,
   },
   priority: {
     type: String,
@@ -338,8 +391,25 @@ ParentRequirementSchema.pre('save', function(this: IParentRequirement) {
   // Update totalMatches count
   this.totalMatches = (this.matchedTutors || []).length;
   
+  // Auto-update status based on hiring progress
+  if (this.status === 'published' && this.applicationsCount > 0) {
+    this.status = 'receiving_applications';
+  }
+  if (this.status === 'receiving_applications' && this.shortlistedCount > 0) {
+    this.status = 'shortlisted';
+  }
+  if (this.status === 'shortlisted' && this.demosScheduledCount > 0) {
+    this.status = 'demo_scheduled';
+  }
+  if (this.status === 'demo_scheduled' && this.demosCompletedCount > 0 && this.hiredTeacherId) {
+    this.status = 'teacher_selected';
+  }
+  if (this.status === 'teacher_selected' && this.hiredAt) {
+    this.status = 'hired';
+  }
+  
   // Check if requirement is expired
-  if (new Date() > (this.expiresAt || new Date()) && this.status === 'active') {
+  if (new Date() > (this.expiresAt || new Date()) && !['hired', 'closed', 'cancelled'].includes(this.status)) {
     this.status = 'expired';
     this.isActive = false;
   }
@@ -448,7 +518,7 @@ ParentRequirementSchema.methods.extendExpiry = function(this: IParentRequirement
   const newExpiryDate = new Date(this.expiresAt || Date.now());
   newExpiryDate.setDate(newExpiryDate.getDate() + days);
   this.expiresAt = newExpiryDate;
-  this.status = 'active';
+  this.status = 'published';
   this.isActive = true;
   return this.save();
 };

@@ -9,24 +9,79 @@
  * - TutorApplication (pending)
  * - DemoClass (scheduled for tomorrow)
  * 
- * Usage: npx ts-node src/scripts/seedDemoAccounts.ts
- * Or: node dist/scripts/seedDemoAccounts.js (after build)
+ * Usage: 
+ *   Development: npm run seed-demo:dev
+ *   Production:  npm run seed-demo (requires --force flag)
+ *   Direct:      npx ts-node src/scripts/seedDemoAccounts.ts [--force]
  */
 
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { config } from 'dotenv';
+import readline from 'readline';
 
 // Load environment variables
 config();
 
-// Import models
-import { User } from '../models/User';
-import { ParentRequirement } from '../models/ParentRequirement';
-import { TeacherProfile } from '../models/TeacherProfile';
-import { TutorMatch } from '../models/TutorMatch';
-import { TutorApplication } from '../models/TutorApplication';
-import { DemoClass } from '../models/DemoClass';
+// Models will be loaded after database connection
+let User: any, ParentRequirement: any, TeacherProfile: any, TutorMatch: any, TutorApplication: any, DemoClass: any;
+
+// Parse CLI arguments
+const args = process.argv.slice(2);
+const FORCE_MODE = args.includes('--force');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Safety check - prevent accidental production seeding
+const safetyCheck = async (): Promise<boolean> => {
+  if (IS_PRODUCTION && !FORCE_MODE) {
+    console.log('\n⚠️  WARNING: You are about to seed demo data in PRODUCTION environment!');
+    console.log('This will create test accounts with known credentials.');
+    console.log('\nType "yes" to continue, or press Ctrl+C to abort:');
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    return new Promise((resolve) => {
+      rl.question('> ', (answer) => {
+        rl.close();
+        resolve(answer.toLowerCase().trim() === 'yes');
+      });
+    });
+  }
+  return true;
+};
+
+// Load models dynamically after DB connection
+const loadModels = (): void => {
+  try {
+    const userModule = require('../models/User');
+    const parentReqModule = require('../models/ParentRequirement');
+    const teacherProfileModule = require('../models/TeacherProfile');
+    const tutorMatchModule = require('../models/TutorMatch');
+    const tutorAppModule = require('../models/TutorApplication');
+    const demoClassModule = require('../models/DemoClass');
+
+    User = userModule.User;
+    ParentRequirement = parentReqModule.ParentRequirement;
+    TeacherProfile = teacherProfileModule.TeacherProfile;
+    TutorMatch = tutorMatchModule.TutorMatch;
+    TutorApplication = tutorAppModule.TutorApplication;
+    DemoClass = demoClassModule.DemoClass;
+
+    // Validate models loaded
+    if (!User || !ParentRequirement || !TeacherProfile || !TutorMatch || !TutorApplication || !DemoClass) {
+      console.error('❌ One or more models failed to load');
+      process.exit(1);
+    }
+
+    console.log('✅ Models loaded successfully');
+  } catch (error) {
+    console.error('❌ Failed to load models:', error);
+    process.exit(1);
+  }
+};
 
 // Demo Account Data
 const DEMO_PARENT = {
@@ -110,7 +165,7 @@ const createDemoParent = async (): Promise<{ user: any; requirement: any }> => {
   const hashedPassword = await hashPassword(DEMO_PARENT.password);
   const parentUser = new User({
     email: DEMO_PARENT.email,
-    phoneNumber: DEMO_PARENT.mobileNumber,
+    mobileNumber: DEMO_PARENT.mobileNumber,
     password: hashedPassword,
     role: 'parent',
     profile: {
@@ -185,7 +240,7 @@ const createDemoTeacher = async (): Promise<{ user: any; profile: any }> => {
   const hashedPassword = await hashPassword(DEMO_TEACHER.password);
   const teacherUser = new User({
     email: DEMO_TEACHER.email,
-    phoneNumber: DEMO_TEACHER.mobileNumber,
+    mobileNumber: DEMO_TEACHER.mobileNumber,
     password: hashedPassword,
     role: 'teacher',
     profile: {
@@ -199,7 +254,7 @@ const createDemoTeacher = async (): Promise<{ user: any; profile: any }> => {
   await teacherUser.save();
   console.log(`  ✅ Teacher User created: ${teacherUser._id}`);
   
-  // Create TeacherProfile
+  // Create TeacherProfile with schema-compliant values
   const teacherProfile = new TeacherProfile({
     userId: teacherUser._id,
     basicDetails: {
@@ -226,7 +281,7 @@ const createDemoTeacher = async (): Promise<{ user: any; profile: any }> => {
       specialization: 'Mathematics',
       teachingModes: ['student_home', 'online'],
       groupTuitionOption: false,
-      groupSize: 0,
+      groupSize: 5,  // FIXED: Changed from 0 to 5 (valid range: 2-20)
       groupRate: 0,
     },
     locationAvailability: {
@@ -253,12 +308,12 @@ const createDemoTeacher = async (): Promise<{ user: any; profile: any }> => {
       negotiationAllowed: true,
     },
     verificationDocuments: {
-      aadhaarCard: '',
-      panCard: '',
+      aadhaarCard: 'DEMO-AADHAAR-1234',  // FIXED: Added valid placeholder
+      panCard: 'DEMO-PAN-ABCDE1234F',    // FIXED: Added valid placeholder
       qualificationDocuments: [],
       portfolioPhotos: [],
     },
-    verificationStatus: 'approved',
+    verificationStatus: 'verified',  // FIXED: Changed from 'approved' to 'verified'
     stats: {
       totalStudents: 0,
       activeStudents: 0,
@@ -348,12 +403,17 @@ const createTutorMatch = async (
       },
       timingScore: 90,
       timingMatchDetails: {
-        requirementDays: ['Monday', 'Wednesday', 'Friday'],
-        teacherDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
         requirementTimeSlots: ['Evening'],
+        teacherDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
         teacherTimeSlots: ['Morning', 'Afternoon', 'Evening'],
-        dayOverlap: ['Monday', 'Wednesday', 'Friday'],
         timeOverlap: ['Evening'],
+        timeScore: 90,
+      },
+      bonusDetails: {
+        genderScore: 0,
+        languageScore: 10,
+        experienceScore: 15,
+        totalBonus: 25,
       },
     },
     algorithmVersion: 'v1.0',
@@ -433,7 +493,7 @@ const createDemoClass = async (
     duration: 60,
     mode: 'offline',
     meetingDetails: {
-      platform: 'In-Person',
+      platform: 'in_person',  // FIXED: Changed from 'In-Person' to 'in_person' (valid enum)
       address: '123 Demo Street, Kanpur',
     },
     status: 'scheduled',
@@ -453,8 +513,16 @@ const seedDemoAccounts = async (): Promise<void> => {
   console.log('🌱 DEMO ACCOUNTS SEED SCRIPT');
   console.log('='.repeat(60));
   
+  // Safety check for production
+  const shouldProceed = await safetyCheck();
+  if (!shouldProceed) {
+    console.log('\n❌ Seeding aborted by user');
+    process.exit(0);
+  }
+  
   try {
     await connectDB();
+    loadModels(); // Load models after DB connection
     await clearDemoData();
     
     // Create accounts

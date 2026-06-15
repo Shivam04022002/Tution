@@ -50,9 +50,11 @@ const PromoCodeSchema = new mongoose_1.Schema({
     maxDiscountAmount: { type: Number },
     applicableTo: {
         type: String,
-        enum: ['unlock_lead', 'unlock_tutor', 'all'],
+        enum: ['unlock_lead', 'unlock_tutor', 'subscription', 'credit_pack', 'all'],
         default: 'all',
     },
+    applicablePlans: [{ type: String }],
+    applicablePacks: [{ type: String }],
     minOrderAmount: { type: Number, default: 0 },
     usageLimit: { type: Number, required: true, default: 1000 },
     usageCount: { type: Number, default: 0 },
@@ -66,7 +68,7 @@ const PromoCodeSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 PromoCodeSchema.index({ isActive: 1, validFrom: 1, validTo: 1 });
 PromoCodeSchema.index({ createdAt: -1 });
-PromoCodeSchema.methods.isValid = async function (userId, orderAmount, type) {
+PromoCodeSchema.methods.isValid = async function (userId, orderAmount, type, planName, packId) {
     const now = new Date();
     if (!this.isActive)
         return { valid: false, error: 'Promo code is inactive.' };
@@ -80,6 +82,16 @@ PromoCodeSchema.methods.isValid = async function (userId, orderAmount, type) {
         return { valid: false, error: `Minimum order ₹${this.minOrderAmount} required.` };
     if (this.applicableTo !== 'all' && this.applicableTo !== type) {
         return { valid: false, error: `Promo code not applicable for this payment type.` };
+    }
+    if (this.applicableTo === 'subscription' && this.applicablePlans && this.applicablePlans.length > 0) {
+        if (!planName || !this.applicablePlans.includes(planName)) {
+            return { valid: false, error: `Promo code not applicable for this subscription plan.` };
+        }
+    }
+    if (this.applicableTo === 'credit_pack' && this.applicablePacks && this.applicablePacks.length > 0) {
+        if (!packId || !this.applicablePacks.includes(packId)) {
+            return { valid: false, error: `Promo code not applicable for this credit pack.` };
+        }
     }
     if (this.restrictedToUserIds && this.restrictedToUserIds.length > 0) {
         const allowed = this.restrictedToUserIds.map((id) => id.toString());

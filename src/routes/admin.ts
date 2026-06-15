@@ -37,6 +37,44 @@ import {
   updatePromoCode,
   deactivatePromoCode,
 } from '../controllers/promoController';
+import {
+  getRevenueOverview,
+  getSubscriptionMetrics,
+  getCreditMetrics,
+  getPaymentMetrics,
+  getInvoiceMetrics,
+  getRevenueCharts,
+} from '../controllers/adminRevenueController';
+import {
+  getKycQueue,
+  getKycDetailAdmin,
+  approveKyc,
+  rejectKyc,
+  requestReupload,
+} from '../controllers/kycController';
+import {
+  getAllSubscriptions,
+  getTeacherSubscription,
+  upgradeSubscription,
+  downgradeSubscription,
+  extendSubscription,
+  suspendSubscription,
+  reactivateSubscription,
+  cancelSubscription,
+  getAuditLogsHandler as getSubscriptionAuditLogs,
+  getSubscriptionSummary,
+} from '../controllers/adminSubscriptionController';
+import {
+  getAllCredits,
+  getTeacherCredits,
+  grantCredits,
+  deductCredits,
+  grantBonusCredits,
+  correctCredits,
+  getCreditAuditLogsHandler,
+  getCreditsSummary,
+  getAllTransactions,
+} from '../controllers/adminCreditsController';
 import { authenticate, authorize } from '../middleware/auth';
 
 // Memory storage — no temp files on disk; xlsx reads from buffer
@@ -96,10 +134,48 @@ router.get('/refunds', listRefunds);
 router.patch('/refunds/:id/approve', approveRefund);
 router.patch('/refunds/:id/reject', rejectRefund);
 
+// Revenue dashboard
+router.get('/revenue/overview',       getRevenueOverview);
+router.get('/revenue/subscriptions',  getSubscriptionMetrics);
+router.get('/revenue/credits',        getCreditMetrics);
+router.get('/revenue/payments',       getPaymentMetrics);
+router.get('/revenue/invoices',       getInvoiceMetrics);
+router.get('/revenue/charts',         getRevenueCharts);
+
 // Promo code management
 router.get('/promos', listPromoCodes);
 router.post('/promos', createPromoCode);
 router.patch('/promos/:id', updatePromoCode);
 router.delete('/promos/:id', deactivatePromoCode);
+
+// KYC verification management
+router.get('/kyc', getKycQueue);
+router.get('/kyc/:id', getKycDetailAdmin);
+router.post('/kyc/:id/approve', approveKyc);
+router.post('/kyc/:id/reject', rejectKyc);
+router.post('/kyc/:id/request-reupload', requestReupload);
+
+// Subscription management
+router.get('/subscriptions', getAllSubscriptions);
+router.get('/subscriptions/summary', getSubscriptionSummary);
+router.get('/subscriptions/audit-logs', getSubscriptionAuditLogs);
+router.get('/subscriptions/:teacherId', getTeacherSubscription);
+router.post('/subscriptions/upgrade', upgradeSubscription);
+router.post('/subscriptions/downgrade', downgradeSubscription);
+router.post('/subscriptions/extend', extendSubscription);
+router.post('/subscriptions/suspend', suspendSubscription);
+router.post('/subscriptions/reactivate', reactivateSubscription);
+router.post('/subscriptions/cancel', cancelSubscription);
+
+// Credit management
+router.get('/credits', getAllCredits);
+router.get('/credits/summary', getCreditsSummary);
+router.get('/credits/audit-logs', getCreditAuditLogsHandler);
+router.get('/credits/transactions', getAllTransactions);
+router.get('/credits/:teacherId', getTeacherCredits);
+router.post('/credits/grant', grantCredits);
+router.post('/credits/deduct', deductCredits);
+router.post('/credits/bonus', grantBonusCredits);
+router.post('/credits/correct', correctCredits);
 
 export default router;

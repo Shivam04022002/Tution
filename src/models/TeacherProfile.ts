@@ -34,6 +34,10 @@ export interface ITeacherProfile extends Document {
     groupTuitionOption: boolean;
     groupSize: number;
     groupRate: number;
+    subjectExperience: Array<{ subject: string; yearsExperience: number }>;
+    studentTypes: string[];
+    teachingLevel: string[];
+    examPreparation: string[];
   };
   locationAvailability: {
     address: string;
@@ -54,7 +58,39 @@ export interface ITeacherProfile extends Document {
     teachingRadius: number;
     availableDays: string[];
     availableTimeSlots: string[];
+    customTimeSlots: Array<{
+      id: string;
+      startTime: string; // HH:mm format
+      endTime: string;   // HH:mm format
+      label: string;
+      isActive: boolean;
+    }>;
+    weeklySchedule: {
+      [key: string]: {
+        isEnabled: boolean;
+        timeSlots: string[]; // References to customTimeSlots IDs
+      };
+    };
+    maxStudents: {
+      active: number;
+      daily: number;
+    };
     vacationMode: boolean;
+  };
+  discoverability: {
+    availableForNewStudents: boolean;
+    visibleInMarketplace: boolean;
+    onlineStatus: 'online' | 'offline' | 'hybrid';
+    travelSettings: {
+      maxTravelDistance: number; // in KM
+      preferredTravelModes: string[];
+    };
+    locationCoverage: {
+      state: string;
+      city: string;
+      areas: string[];
+      pincodes: string[];
+    };
   };
   bio?: string;
   pricingRevenue: {
@@ -72,15 +108,30 @@ export interface ITeacherProfile extends Document {
     introVideo?: string;
     portfolioPhotos: string[];
   };
-  verificationStatus: 'pending' | 'verified' | 'rejected';
+  documents?: Array<{
+    _id: mongoose.Types.ObjectId;
+    type: 'profile_photo' | 'government_id' | 'aadhaar' | 'pan' | 'driving_license' | 'passport' | 'degree_certificate' | 'teaching_certificate' | 'experience_certificate';
+    name: string;
+    url: string;
+    publicId: string;
+    status: 'draft' | 'pending' | 'verified' | 'rejected';
+    uploadedAt: Date;
+    verifiedAt?: Date;
+    rejectionReason?: string;
+    fileType: 'jpg' | 'png' | 'pdf';
+    fileSize: number;
+  }>;
+  verificationStatus: 'draft' | 'pending' | 'verified' | 'rejected';
   verificationDate?: Date;
   rejectionReason?: string;
+  verificationNotes?: string;
   stats: {
     totalStudents: number;
     activeStudents: number;
     completedClasses: number;
     averageRating: number;
     totalReviews: number;
+    ratingBreakdown?: Record<string, number>;
     totalEarnings: number;
     leadUnlocks: number;
     responseRate: number;
@@ -98,6 +149,21 @@ export interface ITeacherProfile extends Document {
   blockReason?: string;
   isProfileComplete?: boolean;
   profileCompletionPercentage?: number;
+  subscription: {
+    currentPlan: 'free' | 'starter' | 'professional' | 'premium';
+    subscriptionStatus: 'active' | 'cancelled' | 'expired' | 'none';
+    subscriptionStartDate?: Date;
+    subscriptionEndDate?: Date;
+    autoRenew: boolean;
+  };
+  savedRequirements: mongoose.Types.ObjectId[];
+  hiddenRequirements: mongoose.Types.ObjectId[];
+  
+  // Referral system fields
+  referralCode?: string;
+  referralCount: number;
+  totalRewardsEarned: number;
+  
   createdAt: Date;
   updatedAt: Date;
   
@@ -228,6 +294,22 @@ const TeacherProfileSchema: Schema = new Schema({
       type: Number,
       min: 0,
     },
+    subjectExperience: [{
+      subject: { type: String, required: true, trim: true },
+      yearsExperience: { type: Number, required: true, min: 0, max: 50 },
+    }],
+    studentTypes: [{
+      type: String,
+      enum: ['school_students', 'college_students', 'competitive_exams', 'working_professionals'],
+    }],
+    teachingLevel: [{
+      type: String,
+      enum: ['beginner', 'intermediate', 'advanced'],
+    }],
+    examPreparation: [{
+      type: String,
+      enum: ['JEE', 'NEET', 'CUET', 'UPSC', 'SSC', 'Banking', 'State Exams'],
+    }],
   },
   locationAvailability: {
     address: {
@@ -307,9 +389,82 @@ const TeacherProfileSchema: Schema = new Schema({
       type: String,
       required: true,
     }],
+    customTimeSlots: [{
+      id: { type: String, required: true },
+      startTime: { type: String, required: true, match: /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/ }, // HH:mm format
+      endTime: { type: String, required: true, match: /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/ },   // HH:mm format
+      label: { type: String, required: true, trim: true },
+      isActive: { type: Boolean, default: true },
+    }],
+    weeklySchedule: {
+      type: Map,
+      of: {
+        isEnabled: { type: Boolean, default: false },
+        timeSlots: [{ type: String }], // References to customTimeSlots IDs
+      },
+      default: {},
+    },
+    maxStudents: {
+      active: {
+        type: Number,
+        default: 10,
+        min: 1,
+        max: 100,
+      },
+      daily: {
+        type: Number,
+        default: 5,
+        min: 1,
+        max: 20,
+      },
+    },
     vacationMode: {
       type: Boolean,
       default: false,
+    },
+  },
+  discoverability: {
+    availableForNewStudents: {
+      type: Boolean,
+      default: true,
+    },
+    visibleInMarketplace: {
+      type: Boolean,
+      default: true,
+    },
+    onlineStatus: {
+      type: String,
+      enum: ['online', 'offline', 'hybrid'],
+      default: 'hybrid',
+    },
+    travelSettings: {
+      maxTravelDistance: {
+        type: Number,
+        default: 10,
+        min: 1,
+        max: 50,
+      },
+      preferredTravelModes: [{
+        type: String,
+        enum: ['walking', 'cycling', 'public_transport', 'car', 'bike'],
+      }],
+    },
+    locationCoverage: {
+      state: {
+        type: String,
+        required: true,
+      },
+      city: {
+        type: String,
+        required: true,
+      },
+      areas: [{
+        type: String,
+      }],
+      pincodes: [{
+        type: String,
+        match: /^[0-9]{6}$/,
+      }],
     },
   },
   bio: {
@@ -367,15 +522,61 @@ const TeacherProfileSchema: Schema = new Schema({
       type: String,
     }],
   },
+  documents: [{
+    type: {
+      type: String,
+      enum: ['profile_photo', 'government_id', 'aadhaar', 'pan', 'driving_license', 'passport', 'degree_certificate', 'teaching_certificate', 'experience_certificate'],
+      required: true,
+    },
+    name: {
+      type: String,
+      required: true,
+    },
+    url: {
+      type: String,
+      required: true,
+    },
+    publicId: {
+      type: String,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ['draft', 'pending', 'verified', 'rejected'],
+      default: 'draft',
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    verifiedAt: {
+      type: Date,
+    },
+    rejectionReason: {
+      type: String,
+    },
+    fileType: {
+      type: String,
+      enum: ['jpg', 'png', 'pdf'],
+      required: true,
+    },
+    fileSize: {
+      type: Number,
+      required: true,
+    },
+  }],
   verificationStatus: {
     type: String,
-    enum: ['pending', 'verified', 'rejected'],
-    default: 'pending',
+    enum: ['draft', 'pending', 'verified', 'rejected'],
+    default: 'draft',
   },
   verificationDate: {
     type: Date,
   },
   rejectionReason: {
+    type: String,
+  },
+  verificationNotes: {
     type: String,
   },
   stats: {
@@ -404,6 +605,11 @@ const TeacherProfileSchema: Schema = new Schema({
       type: Number,
       default: 0,
       min: 0,
+    },
+    ratingBreakdown: {
+      type: Map,
+      of: Number,
+      default: { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 },
     },
     totalEarnings: {
       type: Number,
@@ -468,6 +674,54 @@ const TeacherProfileSchema: Schema = new Schema({
     default: 0,
     min: 0,
     max: 100,
+  },
+  subscription: {
+    currentPlan: {
+      type: String,
+      enum: ['free', 'starter', 'professional', 'premium'],
+      default: 'free',
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ['active', 'cancelled', 'expired', 'none'],
+      default: 'none',
+    },
+    subscriptionStartDate: {
+      type: Date,
+    },
+    subscriptionEndDate: {
+      type: Date,
+    },
+    autoRenew: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  savedRequirements: [{
+    type: Schema.Types.ObjectId,
+    ref: 'ParentRequirement',
+  }],
+  hiddenRequirements: [{
+    type: Schema.Types.ObjectId,
+    ref: 'ParentRequirement',
+  }],
+  
+  // Referral system fields
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
+  referralCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  totalRewardsEarned: {
+    type: Number,
+    default: 0,
+    min: 0,
   },
 }, {
   timestamps: true,

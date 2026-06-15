@@ -54,7 +54,7 @@ export const getPlatformStats = async (req: AuthRequest, res: Response) => {
       User.countDocuments({ role: 'parent', isActive: true }),
       User.countDocuments({ role: 'teacher', isActive: true }),
       TeacherProfile.countDocuments({ verificationStatus: 'pending' }),
-      ParentRequirement.countDocuments({ status: 'active', isActive: true }),
+      ParentRequirement.countDocuments({ status: 'active' as any, isActive: true }),
       TutorApplication.countDocuments({ isActive: true }),
       DemoClass.countDocuments({ isActive: true }),
     ]);

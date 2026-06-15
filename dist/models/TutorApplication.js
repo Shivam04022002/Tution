@@ -100,7 +100,10 @@ const TutorApplicationSchema = new mongoose_1.Schema({
     rejectedAt: {
         type: Date,
     },
-    acceptedAt: {
+    selectedAt: {
+        type: Date,
+    },
+    hiredAt: {
         type: Date,
     },
     rejectionReason: {
@@ -108,13 +111,30 @@ const TutorApplicationSchema = new mongoose_1.Schema({
         trim: true,
         maxlength: 500,
     },
+    selectionReason: {
+        type: String,
+        trim: true,
+        maxlength: 500,
+    },
+    hireNotes: {
+        type: String,
+        trim: true,
+        maxlength: 1000,
+    },
     demoScheduled: {
         type: Boolean,
         default: false,
     },
     demoId: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: 'DemoClass',
+        ref: 'ContactRequest',
+    },
+    demoCompletedAt: {
+        type: Date,
+    },
+    demoOutcome: {
+        type: String,
+        enum: ['interested', 'not_interested', 'need_follow_up'],
     },
     isActive: {
         type: Boolean,
@@ -127,6 +147,50 @@ TutorApplicationSchema.index({ parentRequirementId: 1, status: 1 });
 TutorApplicationSchema.index({ teacherId: 1, status: 1, createdAt: -1 });
 TutorApplicationSchema.index({ parentId: 1, status: 1, createdAt: -1 });
 TutorApplicationSchema.index({ createdAt: -1 });
+TutorApplicationSchema.methods.markAsViewed = function () {
+    this.status = 'viewed';
+    this.viewedByParent = true;
+    this.viewedAt = new Date();
+    return this.save();
+};
+TutorApplicationSchema.methods.markAsShortlisted = function () {
+    this.status = 'shortlisted';
+    this.shortlistedAt = new Date();
+    return this.save();
+};
+TutorApplicationSchema.methods.markAsRejected = function (reason) {
+    this.status = 'rejected';
+    this.rejectedAt = new Date();
+    if (reason)
+        this.rejectionReason = reason;
+    return this.save();
+};
+TutorApplicationSchema.methods.markAsDemoScheduled = function (demoId) {
+    this.status = 'demo_scheduled';
+    this.demoScheduled = true;
+    this.demoId = demoId;
+    return this.save();
+};
+TutorApplicationSchema.methods.markAsDemoCompleted = function (outcome) {
+    this.status = 'demo_completed';
+    this.demoCompletedAt = new Date();
+    this.demoOutcome = outcome;
+    return this.save();
+};
+TutorApplicationSchema.methods.markAsSelected = function (reason) {
+    this.status = 'selected';
+    this.selectedAt = new Date();
+    if (reason)
+        this.selectionReason = reason;
+    return this.save();
+};
+TutorApplicationSchema.methods.markAsHired = function (notes) {
+    this.status = 'hired';
+    this.hiredAt = new Date();
+    if (notes)
+        this.hireNotes = notes;
+    return this.save();
+};
 TutorApplicationSchema.pre('save', async function () {
     if (!this.applicationId) {
         const timestamp = Date.now().toString(36).toUpperCase();

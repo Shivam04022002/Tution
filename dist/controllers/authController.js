@@ -3,14 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.signup = exports.registerComplete = exports.login = exports.logout = exports.updateProfile = exports.getCurrentUser = exports.verifyOTP = exports.sendOTP = void 0;
+exports.checkDuplicate = exports.signup = exports.registerComplete = exports.login = exports.logout = exports.updateProfile = exports.getCurrentUser = exports.verifyOTP = exports.sendOTP = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const firebase_1 = require("../config/firebase");
 const User_1 = require("../models/User");
 const ParentRequirement_1 = require("../models/ParentRequirement");
 const TeacherProfile_1 = require("../models/TeacherProfile");
-const generateToken = (payload) => {
-    return jsonwebtoken_1.default.sign(payload, process.env.JWT_SECRET, {
+const generateToken = (userId) => {
+    return jsonwebtoken_1.default.sign({ userId }, process.env.JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRE || '7d',
     });
 };
@@ -62,19 +62,53 @@ const verifyOTP = async (req, res) => {
                 message: 'Phone number and OTP are required',
             });
         }
+        if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid OTP format. OTP must be 6 digits.',
+            });
+        }
         let firebaseUser;
         try {
-            firebaseUser = await firebase_1.auth.getUserByPhoneNumber(phoneNumber);
+            firebaseUser = await firebase_1.auth.verifyPhoneNumber(phoneNumber, otp);
         }
         catch (error) {
-            firebaseUser = await firebase_1.auth.createUser({ phoneNumber });
+            console.error('OTP verification failed:', error.message);
+            if (error.message.includes('Invalid OTP') || error.message.includes('auth/invalid-verification-code')) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Invalid OTP. Please try again.',
+                });
+            }
+            if (error.message.includes('expired') || error.message.includes('auth/code-expired')) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'OTP has expired. Please request a new one.',
+                });
+            }
+            if (error.message.includes('too many') || error.message.includes('auth/too-many-requests')) {
+                return res.status(429).json({
+                    success: false,
+                    message: 'Too many attempts. Please try again later.',
+                });
+            }
+            return res.status(401).json({
+                success: false,
+                message: 'OTP verification failed. Please try again.',
+            });
         }
         let user = await User_1.User.findOne({ firebaseUid: firebaseUser.uid });
         if (!user) {
             if (!role) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Role is required for new users',
+                    message: 'Role is required for new users. Please specify parent or teacher.',
+                });
+            }
+            if (!['parent', 'teacher'].includes(role)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid role. Only parent and teacher roles can be created via OTP.',
                 });
             }
             user = new User_1.User({
@@ -89,7 +123,7 @@ const verifyOTP = async (req, res) => {
             });
             await user.save();
         }
-        const token = generateToken({ firebaseUid: user.firebaseUid || undefined, userId: user._id.toString() });
+        const token = generateToken(user._id.toString());
         return res.status(200).json({
             success: true,
             message: 'Login successful',
@@ -243,7 +277,7 @@ const login = async (req, res) => {
                 message: 'Account is deactivated',
             });
         }
-        const token = generateToken({ firebaseUid: user.firebaseUid || undefined, userId: user._id.toString() });
+        const token = generateToken(user._id.toString());
         return res.status(200).json({
             success: true,
             message: 'Login successful',
@@ -277,7 +311,7 @@ const generateRequirementId = () => {
 };
 const registerComplete = async (req, res) => {
     try {
-        const { role, fullName, mobileNumber, email, password, parentDetails, studentDetails, tuitionRequirement, locationDetails, budgetDetails, tutorPreferences, personalDetails, educationDetails, professionalDetails, teachingDetails, teachingMode, availability, locationPreferences, pricingDetails, } = req.body;
+        const { role, fullName, mobileNumber, email, password, parentDetails, studentDetails, tuitionRequirement, locationDetails, budgetDetails, scheduleDetails, tutorPreferences, personalDetails, educationDetails, professionalDetails, teachingDetails, teachingMode, availability, locationPreferences, pricingDetails, } = req.body;
         if (!role || !fullName || !mobileNumber || !email || !password) {
             return res.status(400).json({
                 success: false,
@@ -322,6 +356,12 @@ const registerComplete = async (req, res) => {
         });
         await user.save();
         let profileData = null;
+        console.log('=== REGISTER-COMPLETE DEBUG ===');
+        console.log('studentDetails:', JSON.stringify(studentDetails, null, 2));
+        console.log('tuitionRequirement:', JSON.stringify(tuitionRequirement, null, 2));
+        console.log('scheduleDetails:', JSON.stringify(scheduleDetails, null, 2));
+        console.log('locationDetails:', JSON.stringify(locationDetails, null, 2));
+        console.log('=== END DEBUG ===');
         if (role === 'parent') {
             let minAmount = 0;
             let maxAmount = 0;
@@ -340,41 +380,56 @@ const registerComplete = async (req, res) => {
                 minAmount = budget.min;
                 maxAmount = budget.max;
             }
-            const modeMap = {
-                'Home Tuition': 'home',
-                'Online Tuition': 'online',
-                'Group Tuition': 'group',
-            };
-            const tuitionType = modeMap[tuitionRequirement?.tuitionMode] || 'home';
+            let tuitionType = 'home';
+            if (tuitionRequirement?.tuitionType) {
+                tuitionType = tuitionRequirement.tuitionType;
+            }
+            else if (tuitionRequirement?.tuitionMode) {
+                const modeMap = {
+                    'Home Tuition': 'home',
+                    'Online Tuition': 'online',
+                    'Group Tuition': 'group',
+                    'Crash Course': 'crash',
+                };
+                tuitionType = modeMap[tuitionRequirement.tuitionMode] || 'home';
+            }
             const parentRequirement = new ParentRequirement_1.ParentRequirement({
                 parentId: user._id,
                 requirementId: generateRequirementId(),
                 studentDetails: {
-                    studentName: studentDetails?.studentName,
+                    studentName: studentDetails?.studentName || '',
                     age: parseInt(studentDetails?.age, 10) || 0,
-                    grade: studentDetails?.className,
-                    board: tuitionRequirement?.board,
-                    schoolName: studentDetails?.schoolName,
-                    genderPreference: studentDetails?.gender || 'any',
+                    grade: studentDetails?.grade || studentDetails?.className || '',
+                    board: studentDetails?.board || tuitionRequirement?.board || '',
+                    schoolName: studentDetails?.schoolName || '',
+                    genderPreference: studentDetails?.gender?.toLowerCase() || 'any',
                     multipleChildren: false,
                 },
                 subjects: tuitionRequirement?.subjects || [],
                 languagePreference: ['English'],
                 tuitionType,
                 location: {
-                    address: locationDetails?.address,
-                    city: locationDetails?.city,
-                    pincode: locationDetails?.pincode,
-                    coordinates: { latitude: 0, longitude: 0 },
-                    teachingRadius: 5,
+                    address: locationDetails?.address || '',
+                    city: locationDetails?.city || '',
+                    pincode: locationDetails?.pincode || '',
+                    coordinates: {
+                        latitude: parseFloat(locationDetails?.latitude) || 0,
+                        longitude: parseFloat(locationDetails?.longitude) || 0,
+                    },
+                    teachingRadius: parseInt(locationDetails?.teachingRadius) || 5,
                 },
                 schedule: {
-                    daysPerWeek: '3',
-                    preferredTimings: tuitionRequirement?.preferredTiming ? [tuitionRequirement.preferredTiming] : [],
-                    startDate: new Date().toISOString().split('T')[0],
+                    daysPerWeek: scheduleDetails?.daysPerWeek || '3',
+                    preferredTimings: scheduleDetails?.preferredTimings ||
+                        (tuitionRequirement?.preferredTiming ? [tuitionRequirement.preferredTiming] : []),
+                    startDate: scheduleDetails?.startDate || new Date().toISOString().split('T')[0],
                 },
                 tutorPreferences: tutorPreferences || '',
-                budget: { minAmount, maxAmount, negotiationAllowed: true },
+                budget: {
+                    minAmount: minAmount || 0,
+                    maxAmount: maxAmount || 0,
+                    negotiationAllowed: true
+                },
                 status: 'active',
                 priority: 'medium',
                 matchedTutors: [],
@@ -499,7 +554,7 @@ const registerComplete = async (req, res) => {
             await teacherProfile.save();
             profileData = teacherProfile;
         }
-        const token = jsonwebtoken_1.default.sign({ userId: user._id.toString() }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
+        const token = generateToken(user._id.toString());
         return res.status(201).json({
             success: true,
             message: 'Account created successfully',
@@ -535,10 +590,10 @@ const signup = async (req, res) => {
                 message: 'All fields are required',
             });
         }
-        if (!['parent', 'teacher', 'admin'].includes(role)) {
+        if (!['parent', 'teacher'].includes(role)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid role',
+                message: 'Invalid role. Only parent and teacher roles can be created via signup.',
             });
         }
         if (password.length < 6) {
@@ -572,7 +627,7 @@ const signup = async (req, res) => {
             onboardingCompleted: false,
         });
         await user.save();
-        const token = generateToken({ userId: user._id.toString() });
+        const token = generateToken(user._id.toString());
         return res.status(201).json({
             success: true,
             message: 'Account created successfully',
@@ -597,4 +652,36 @@ const signup = async (req, res) => {
     }
 };
 exports.signup = signup;
+const checkDuplicate = async (req, res) => {
+    try {
+        const { email, mobileNumber } = req.body;
+        if (!email && !mobileNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email or mobile number is required',
+            });
+        }
+        const query = {};
+        if (email)
+            query.email = email.toLowerCase();
+        if (mobileNumber)
+            query.phoneNumber = mobileNumber;
+        const existingUser = await User_1.User.findOne({
+            $or: Object.keys(query).map((key) => ({ [key]: query[key] })),
+        });
+        return res.status(200).json({
+            success: true,
+            exists: !!existingUser,
+            message: existingUser ? 'Account already exists' : 'Account available',
+        });
+    }
+    catch (error) {
+        console.error('Check duplicate error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to check account availability',
+        });
+    }
+};
+exports.checkDuplicate = checkDuplicate;
 //# sourceMappingURL=authController.js.map

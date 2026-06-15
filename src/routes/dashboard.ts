@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getParentDashboard,
   getTeacherDashboard,
+  getParentQuickStats,
 } from '../controllers/dashboardController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -21,6 +22,14 @@ router.get(
   authenticate,
   authorize('teacher'),
   getTeacherDashboard
+);
+
+// Parent Quick Stats - Lightweight stats only
+router.get(
+  '/parent/stats',
+  authenticate,
+  authorize('parent'),
+  getParentQuickStats
 );
 
 export default router;

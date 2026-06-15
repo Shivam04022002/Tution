@@ -190,8 +190,48 @@ const ParentRequirementSchema = new mongoose_1.Schema({
     },
     status: {
         type: String,
-        enum: ['active', 'closed', 'expired', 'paused'],
-        default: 'active',
+        enum: ['draft', 'published', 'receiving_applications', 'shortlisted', 'demo_scheduled', 'teacher_selected', 'hired', 'closed', 'cancelled', 'expired', 'paused'],
+        default: 'published',
+    },
+    applicationsCount: {
+        type: Number,
+        default: 0,
+    },
+    shortlistedCount: {
+        type: Number,
+        default: 0,
+    },
+    demosScheduledCount: {
+        type: Number,
+        default: 0,
+    },
+    demosCompletedCount: {
+        type: Number,
+        default: 0,
+    },
+    hiredTeacherId: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: 'User',
+    },
+    hiredTeacherProfileId: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: 'TeacherProfile',
+    },
+    hiredAt: {
+        type: Date,
+    },
+    hireReason: {
+        type: String,
+        trim: true,
+        maxlength: 500,
+    },
+    closedReason: {
+        type: String,
+        trim: true,
+        maxlength: 500,
+    },
+    closedAt: {
+        type: Date,
     },
     priority: {
         type: String,
@@ -287,7 +327,22 @@ ParentRequirementSchema.virtual('contactedMatches').get(function () {
 });
 ParentRequirementSchema.pre('save', function () {
     this.totalMatches = (this.matchedTutors || []).length;
-    if (new Date() > (this.expiresAt || new Date()) && this.status === 'active') {
+    if (this.status === 'published' && this.applicationsCount > 0) {
+        this.status = 'receiving_applications';
+    }
+    if (this.status === 'receiving_applications' && this.shortlistedCount > 0) {
+        this.status = 'shortlisted';
+    }
+    if (this.status === 'shortlisted' && this.demosScheduledCount > 0) {
+        this.status = 'demo_scheduled';
+    }
+    if (this.status === 'demo_scheduled' && this.demosCompletedCount > 0 && this.hiredTeacherId) {
+        this.status = 'teacher_selected';
+    }
+    if (this.status === 'teacher_selected' && this.hiredAt) {
+        this.status = 'hired';
+    }
+    if (new Date() > (this.expiresAt || new Date()) && !['hired', 'closed', 'cancelled'].includes(this.status)) {
         this.status = 'expired';
         this.isActive = false;
     }
@@ -379,7 +434,7 @@ ParentRequirementSchema.methods.extendExpiry = function (days = 7) {
     const newExpiryDate = new Date(this.expiresAt || Date.now());
     newExpiryDate.setDate(newExpiryDate.getDate() + days);
     this.expiresAt = newExpiryDate;
-    this.status = 'active';
+    this.status = 'published';
     this.isActive = true;
     return this.save();
 };

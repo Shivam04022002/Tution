@@ -16,7 +16,7 @@ export interface RazorpayRefundResult {
     amount: number;
     status: string;
 }
-export declare function createOrder(amountInRupees: number, receipt: string, notes?: Record<string, string>): Promise<RazorpayOrderResult>;
+export declare function createOrder(amountInRupees: number, receipt: string, notes?: Record<string, string | number | null>): Promise<RazorpayOrderResult>;
 export declare function verifyPayment(input: RazorpayVerifyInput): boolean;
 export declare function verifyWebhookSignature(rawBody: string, signature: string): boolean;
 export declare function createRefund(razorpayPaymentId: string, amountInRupees?: number, notes?: Record<string, string>): Promise<RazorpayRefundResult>;

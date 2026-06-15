@@ -671,10 +671,10 @@ export class MatchingService {
     console.log(`[MatchingEngine] Cleaned ${cleaned} expired matches`);
 
     const requirements = await ParentRequirement.find({
-      status: 'active',
+      status: 'active' as any,
       isActive: true,
       expiresAt: { $gte: new Date() },
-    });
+    } as any);
 
     console.log(`[MatchingEngine] Found ${requirements.length} active requirements`);
 

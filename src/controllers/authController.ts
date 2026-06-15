@@ -379,6 +379,7 @@ export const registerComplete = async (req: Request, res: Response) => {
       tuitionRequirement,
       locationDetails,
       budgetDetails,
+      scheduleDetails,
       tutorPreferences,
       // Teacher specific
       personalDetails,
@@ -448,6 +449,14 @@ export const registerComplete = async (req: Request, res: Response) => {
 
     let profileData: any = null;
 
+    // DEBUG: Log what we received
+    console.log('=== REGISTER-COMPLETE DEBUG ===');
+    console.log('studentDetails:', JSON.stringify(studentDetails, null, 2));
+    console.log('tuitionRequirement:', JSON.stringify(tuitionRequirement, null, 2));
+    console.log('scheduleDetails:', JSON.stringify(scheduleDetails, null, 2));
+    console.log('locationDetails:', JSON.stringify(locationDetails, null, 2));
+    console.log('=== END DEBUG ===');
+
     // Create role-specific profile
     if (role === 'parent') {
       // Parse budget
@@ -469,9 +478,13 @@ export const registerComplete = async (req: Request, res: Response) => {
         maxAmount = budget.max;
       }
 
-      // Use tuitionType from frontend if provided, otherwise map from tuitionMode
-      let tuitionType = tuitionRequirement?.tuitionType || 'home';
-      if (!tuitionType && tuitionRequirement?.tuitionMode) {
+      // Map tuition mode to enum - use frontend mapped value if available, otherwise map it
+      let tuitionType = 'home';
+      if (tuitionRequirement?.tuitionType) {
+        // Frontend already mapped it to enum
+        tuitionType = tuitionRequirement.tuitionType;
+      } else if (tuitionRequirement?.tuitionMode) {
+        // Need to map from display value
         const modeMap: { [key: string]: string } = {
           'Home Tuition': 'home',
           'Online Tuition': 'online',
@@ -486,34 +499,39 @@ export const registerComplete = async (req: Request, res: Response) => {
         parentId: user._id,
         requirementId: generateRequirementId(),
         studentDetails: {
-          studentName: studentDetails?.studentName,
+          studentName: studentDetails?.studentName || '',
           age: parseInt(studentDetails?.age, 10) || 0,
-          grade: studentDetails?.grade || studentDetails?.className, // Use grade from new payload
-          board: studentDetails?.board || tuitionRequirement?.board, // Use board from correct location
-          schoolName: studentDetails?.schoolName,
-          genderPreference: studentDetails?.gender || 'any',
+          grade: studentDetails?.grade || studentDetails?.className || '',
+          board: studentDetails?.board || tuitionRequirement?.board || '',
+          schoolName: studentDetails?.schoolName || '',
+          genderPreference: studentDetails?.gender?.toLowerCase() || 'any',
           multipleChildren: false,
         },
         subjects: tuitionRequirement?.subjects || [],
         languagePreference: ['English'],
         tuitionType,
         location: {
-          address: locationDetails?.address,
-          city: locationDetails?.city,
-          pincode: locationDetails?.pincode,
+          address: locationDetails?.address || '',
+          city: locationDetails?.city || '',
+          pincode: locationDetails?.pincode || '',
           coordinates: {
-            latitude: locationDetails?.latitude || 0,
-            longitude: locationDetails?.longitude || 0,
+            latitude: parseFloat(locationDetails?.latitude) || 0,
+            longitude: parseFloat(locationDetails?.longitude) || 0,
           },
-          teachingRadius: locationDetails?.teachingRadius || 5,
+          teachingRadius: parseInt(locationDetails?.teachingRadius) || 5,
         },
         schedule: {
-          daysPerWeek: '3',
-          preferredTimings: tuitionRequirement?.preferredTiming ? [tuitionRequirement.preferredTiming] : [],
-          startDate: new Date().toISOString().split('T')[0],
+          daysPerWeek: scheduleDetails?.daysPerWeek || '3',
+          preferredTimings: scheduleDetails?.preferredTimings || 
+            (tuitionRequirement?.preferredTiming ? [tuitionRequirement.preferredTiming] : []),
+          startDate: scheduleDetails?.startDate || new Date().toISOString().split('T')[0],
         },
         tutorPreferences: tutorPreferences || '',
-        budget: { minAmount, maxAmount, negotiationAllowed: true },
+        budget: { 
+          minAmount: minAmount || 0, 
+          maxAmount: maxAmount || 0, 
+          negotiationAllowed: true 
+        },
         status: 'active',
         priority: 'medium',
         matchedTutors: [],

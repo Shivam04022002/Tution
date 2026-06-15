@@ -23,7 +23,7 @@ export const getStaffDashboard = async (req: AuthRequest, res: Response) => {
     ] = await Promise.all([
       TeacherProfile.countDocuments({ verificationStatus: 'pending' }),
       Ticket.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
-      ParentRequirement.countDocuments({ status: 'active', isActive: true }),
+      ParentRequirement.countDocuments({ status: 'active' as any, isActive: true }),
       Ticket.countDocuments({
         status: 'resolved',
         resolvedAt: { $gte: todayStart },
@@ -234,7 +234,7 @@ export const getStaffReports = async (req: AuthRequest, res: Response) => {
               { $count: 'count' },
             ],
             active: [
-              { $match: { status: 'active', isActive: true } },
+              { $match: { status: 'active' as any, isActive: true } },
               { $count: 'count' },
             ],
             closed: [

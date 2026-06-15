@@ -6,6 +6,7 @@ export interface IShortlist extends Document {
   teacherId: mongoose.Types.ObjectId;
   teacherProfileId: mongoose.Types.ObjectId;
   requirementId: mongoose.Types.ObjectId;
+  className?: string;
   notes?: string;
   matchScore?: number;
   isContacted: boolean;
@@ -40,6 +41,27 @@ const ShortlistSchema: Schema = new Schema({
     ref: 'ParentRequirement',
     required: true,
     index: true,
+  },
+  className: {
+    type: String,
+    enum: [
+      'Nursery',
+      'LKG',
+      'UKG',
+      'Class 1',
+      'Class 2',
+      'Class 3',
+      'Class 4',
+      'Class 5',
+      'Class 6',
+      'Class 7',
+      'Class 8',
+      'Class 9',
+      'Class 10',
+      'Class 11',
+      'Class 12'
+    ],
+    trim: true,
   },
   notes: {
     type: String,

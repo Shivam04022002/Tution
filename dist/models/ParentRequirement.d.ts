@@ -42,7 +42,7 @@ export interface IParentRequirement extends Document {
         maxAmount: number;
         negotiationAllowed: boolean;
     };
-    status: 'active' | 'closed' | 'expired' | 'paused';
+    status: 'draft' | 'published' | 'receiving_applications' | 'shortlisted' | 'demo_scheduled' | 'teacher_selected' | 'hired' | 'closed' | 'cancelled' | 'expired' | 'paused';
     priority: 'low' | 'medium' | 'high' | 'urgent';
     matchedTutors: Array<{
         tutorId: mongoose.Types.ObjectId;
@@ -55,6 +55,16 @@ export interface IParentRequirement extends Document {
     totalMatches: number;
     views: number;
     unlocks: number;
+    applicationsCount: number;
+    shortlistedCount: number;
+    demosScheduledCount: number;
+    demosCompletedCount: number;
+    hiredTeacherId?: mongoose.Types.ObjectId;
+    hiredTeacherProfileId?: mongoose.Types.ObjectId;
+    hiredAt?: Date;
+    hireReason?: string;
+    closedReason?: string;
+    closedAt?: Date;
     isActive: boolean;
     expiresAt: Date;
     createdAt: Date;

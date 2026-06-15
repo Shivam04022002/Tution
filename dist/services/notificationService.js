@@ -14,6 +14,19 @@ exports.notifyLeadUnlockSuccess = notifyLeadUnlockSuccess;
 exports.notifyAdminRefundRequest = notifyAdminRefundRequest;
 exports.notifyAdminTeacherRegistration = notifyAdminTeacherRegistration;
 exports.notifyAdminImportCompleted = notifyAdminImportCompleted;
+exports.notifyContactRequestReceived = notifyContactRequestReceived;
+exports.notifyDemoRequestReceived = notifyDemoRequestReceived;
+exports.notifyContactRequestAccepted = notifyContactRequestAccepted;
+exports.notifyContactRequestRejected = notifyContactRequestRejected;
+exports.notifyDemoAccepted = notifyDemoAccepted;
+exports.notifyDemoRejected = notifyDemoRejected;
+exports.notifyDemoCompleted = notifyDemoCompleted;
+exports.notifyDemoRescheduled = notifyDemoRescheduled;
+exports.notifyApplicationViewed = notifyApplicationViewed;
+exports.notifyApplicationRejected = notifyApplicationRejected;
+exports.notifyTeacherSelected = notifyTeacherSelected;
+exports.notifyTeacherHired = notifyTeacherHired;
+exports.notifyRequirementClosed = notifyRequirementClosed;
 const Notification_1 = require("../models/Notification");
 async function sendNotification(input) {
     try {
@@ -195,6 +208,171 @@ async function notifyAdminImportCompleted(adminUserIds, importType, count, impor
         data: { screen: 'Import', importId: String(importId) },
         entityId: importId,
         entityType: 'ImportHistory',
+    });
+}
+async function notifyContactRequestReceived(teacherUserId, parentName, contactType, contactRequestId) {
+    const typeLabels = {
+        call: 'phone call',
+        whatsapp: 'WhatsApp message',
+        message: 'message',
+    };
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'CONTACT_REQUEST_RECEIVED',
+        category: 'application',
+        title: 'New Contact Request',
+        body: `${parentName} wants to connect via ${typeLabels[contactType] || 'message'}.`,
+        data: { screen: 'ContactRequests', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyDemoRequestReceived(teacherUserId, parentName, demoDate, contactRequestId) {
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'DEMO_REQUEST_RECEIVED',
+        category: 'demo',
+        title: 'New Demo Request',
+        body: `${parentName} requested a demo class on ${demoDate.toLocaleDateString('en-IN')}.`,
+        data: { screen: 'DemoRequests', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyContactRequestAccepted(parentUserId, contactType, contactRequestId) {
+    return sendNotification({
+        userId: parentUserId,
+        type: 'CONTACT_REQUEST_ACCEPTED',
+        category: 'application',
+        title: 'Contact Request Accepted',
+        body: `Teacher accepted your ${contactType} request. You can now connect.`,
+        data: { screen: 'ContactHistory', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyContactRequestRejected(parentUserId, contactType, reason, contactRequestId) {
+    return sendNotification({
+        userId: parentUserId,
+        type: 'CONTACT_REQUEST_REJECTED',
+        category: 'application',
+        title: 'Contact Request Declined',
+        body: reason || `Teacher declined your ${contactType} request.`,
+        data: { screen: 'ContactHistory', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyDemoAccepted(parentUserId, demoDate, contactRequestId) {
+    return sendNotification({
+        userId: parentUserId,
+        type: 'DEMO_REQUEST_ACCEPTED',
+        category: 'demo',
+        title: 'Demo Request Accepted',
+        body: `Teacher accepted your demo request for ${demoDate.toLocaleDateString('en-IN')}.`,
+        data: { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyDemoRejected(parentUserId, reason, contactRequestId) {
+    return sendNotification({
+        userId: parentUserId,
+        type: 'DEMO_REQUEST_REJECTED',
+        category: 'demo',
+        title: 'Demo Request Declined',
+        body: reason || 'Teacher declined your demo request.',
+        data: { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyDemoCompleted(parentUserId, outcome, contactRequestId) {
+    const outcomeLabels = {
+        interested: 'Teacher marked the demo complete — they are interested!',
+        not_interested: 'Teacher has marked the demo as complete.',
+        need_follow_up: 'Teacher marked the demo complete and wants a follow-up.',
+    };
+    return sendNotification({
+        userId: parentUserId,
+        type: 'DEMO_COMPLETED',
+        category: 'demo',
+        title: 'Demo Class Completed',
+        body: outcomeLabels[outcome] || 'Your demo class has been marked complete.',
+        data: { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyDemoRescheduled(parentUserId, newDate, contactRequestId) {
+    return sendNotification({
+        userId: parentUserId,
+        type: 'DEMO_RESCHEDULED_BY_TEACHER',
+        category: 'demo',
+        title: 'Demo Rescheduled',
+        body: `Teacher rescheduled the demo to ${newDate.toLocaleDateString('en-IN')}.`,
+        data: { screen: 'DemoClasses', contactRequestId: String(contactRequestId) },
+        entityId: contactRequestId,
+        entityType: 'ContactRequest',
+    });
+}
+async function notifyApplicationViewed(teacherUserId, applicationId) {
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'APPLICATION_VIEWED',
+        category: 'application',
+        title: 'Application Viewed',
+        body: 'A parent has viewed your application.',
+        data: { screen: 'Applications', applicationId: String(applicationId) },
+        entityId: applicationId,
+        entityType: 'TutorApplication',
+    });
+}
+async function notifyApplicationRejected(teacherUserId, applicationId, reason) {
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'APPLICATION_REJECTED',
+        category: 'application',
+        title: 'Application Not Selected',
+        body: reason || 'Your application was not selected for this requirement.',
+        data: { screen: 'Applications', applicationId: String(applicationId) },
+        entityId: applicationId,
+        entityType: 'TutorApplication',
+    });
+}
+async function notifyTeacherSelected(teacherUserId, subject, applicationId) {
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'TEACHER_SELECTED',
+        category: 'application',
+        title: 'You Have Been Selected!',
+        body: `Congratulations! You have been selected for the ${subject} requirement. Awaiting final confirmation.`,
+        data: { screen: 'Applications', applicationId: String(applicationId) },
+        entityId: applicationId,
+        entityType: 'TutorApplication',
+    });
+}
+async function notifyTeacherHired(teacherUserId, subject, studentName, applicationId) {
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'TEACHER_HIRED',
+        category: 'application',
+        title: 'You Are Hired!',
+        body: `Congratulations! You have been hired to teach ${subject} to ${studentName}.`,
+        data: { screen: 'Classes', applicationId: String(applicationId) },
+        entityId: applicationId,
+        entityType: 'TutorApplication',
+    });
+}
+async function notifyRequirementClosed(teacherUserId, requirementId, reason) {
+    return sendNotification({
+        userId: teacherUserId,
+        type: 'REQUIREMENT_CLOSED',
+        category: 'application',
+        title: 'Requirement Closed',
+        body: `Requirement ${requirementId} has been closed. ${reason}`,
+        data: { screen: 'Applications' },
+        entityType: 'ParentRequirement',
     });
 }
 //# sourceMappingURL=notificationService.js.map

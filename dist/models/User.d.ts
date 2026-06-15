@@ -4,13 +4,14 @@ export interface IUser extends Document {
     email: string;
     phoneNumber: string;
     password?: string;
-    role: 'parent' | 'teacher' | 'admin';
+    role: 'parent' | 'teacher' | 'admin' | 'staff';
     profile: {
         firstName: string;
         lastName: string;
         profileImage?: string;
         dateOfBirth?: Date;
         gender?: 'male' | 'female' | 'other';
+        department?: string;
     };
     profileCompleted: boolean;
     onboardingCompleted: boolean;
@@ -22,6 +23,7 @@ export interface IUser extends Document {
     };
     isActive: boolean;
     isVerified: boolean;
+    isBlocked: boolean;
     createdAt: Date;
     updatedAt: Date;
     comparePassword(candidatePassword: string): Promise<boolean>;

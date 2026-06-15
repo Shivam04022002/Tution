@@ -59,6 +59,27 @@ const ShortlistSchema = new mongoose_1.Schema({
         required: true,
         index: true,
     },
+    className: {
+        type: String,
+        enum: [
+            'Nursery',
+            'LKG',
+            'UKG',
+            'Class 1',
+            'Class 2',
+            'Class 3',
+            'Class 4',
+            'Class 5',
+            'Class 6',
+            'Class 7',
+            'Class 8',
+            'Class 9',
+            'Class 10',
+            'Class 11',
+            'Class 12'
+        ],
+        trim: true,
+    },
     notes: {
         type: String,
         trim: true,

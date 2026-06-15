@@ -473,15 +473,11 @@ app.post('/api/auth/signup', async (req, res) => {
       });
     }
     
-    // Hash password
-    const bcrypt = require('bcryptjs');
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Create user
+    // Create user - password will be hashed by User model's pre-save hook
     const user = new User({
       email: email.toLowerCase(),
       mobileNumber: mobileNumber,
-      password: hashedPassword,
+      password: password,
       role,
       profile: {
         firstName: fullName?.split(' ')[0] || '',
@@ -525,6 +521,40 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
+// POST /api/auth/check-duplicate - Check if email or mobile already exists
+app.post('/api/auth/check-duplicate', async (req, res) => {
+  try {
+    const { email, mobileNumber } = req.body;
+    
+    if (!email && !mobileNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email or mobile number is required'
+      });
+    }
+    
+    const query = {};
+    if (email) query.email = email.toLowerCase();
+    if (mobileNumber) query.mobileNumber = mobileNumber;
+    
+    const existingUser = await User.findOne({
+      $or: Object.keys(query).map((key) => ({ [key]: query[key] }))
+    });
+    
+    return res.status(200).json({
+      success: true,
+      exists: !!existingUser,
+      message: existingUser ? 'Account already exists' : 'Account available'
+    });
+  } catch (error) {
+    console.error('❌ Check duplicate error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to check account availability'
+    });
+  }
+});
+
 // POST /api/auth/register-complete
 app.post('/api/auth/register-complete', async (req, res) => {
   try {
@@ -539,6 +569,7 @@ app.post('/api/auth/register-complete', async (req, res) => {
       tuitionRequirement,
       locationDetails,
       budgetDetails,
+      scheduleDetails,
       tutorPreferences,
       personalDetails,
       educationDetails,
@@ -552,6 +583,8 @@ app.post('/api/auth/register-complete', async (req, res) => {
     
     console.log('📝 Register-complete attempt:', email, 'Role:', role);
     
+    let user = null;
+    
     // Check if user exists
     const existingUser = await User.findOne({
       $or: [{ email: email.toLowerCase() }, { mobileNumber: mobileNumber }]
@@ -564,15 +597,11 @@ app.post('/api/auth/register-complete', async (req, res) => {
       });
     }
     
-    // Hash password
-    const bcrypt = require('bcryptjs');
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Create user
-    const user = new User({
+    // Create user - password will be hashed by User model's pre-save hook
+    user = new User({
       email: email.toLowerCase(),
       mobileNumber: mobileNumber,
-      password: hashedPassword,
+      password: password,
       role,
       profile: {
         firstName: fullName?.split(' ')[0] || '',
@@ -588,20 +617,74 @@ app.post('/api/auth/register-complete', async (req, res) => {
     if (role === 'parent') {
       const ParentRequirement = require('./src/models/ParentRequirement');
       
+      // Map tuition mode to enum
+      let tuitionType = 'home';
+      if (tuitionRequirement?.tuitionType) {
+        tuitionType = tuitionRequirement.tuitionType;
+      } else if (tuitionRequirement?.tuitionMode) {
+        const modeMap = {
+          'Home Tuition': 'home',
+          'Online Tuition': 'online',
+          'Group Tuition': 'group',
+          'Crash Course': 'crash'
+        };
+        tuitionType = modeMap[tuitionRequirement.tuitionMode] || 'home';
+      }
+      
+      // Parse budget amounts
+      let minAmount = 0;
+      let maxAmount = 0;
+      if (budgetDetails?.budget === 'Custom Budget' && budgetDetails?.customBudget) {
+        maxAmount = parseInt(budgetDetails.customBudget, 10) || 0;
+      } else {
+        const budgetMap = {
+          '₹1000 - ₹2000': { min: 1000, max: 2000 },
+          '₹2000 - ₹5000': { min: 2000, max: 5000 },
+          '₹5000 - ₹10000': { min: 5000, max: 10000 },
+          '₹10000+': { min: 10000, max: 50000 }
+        };
+        const budget = budgetMap[budgetDetails?.budget] || { min: 0, max: 0 };
+        minAmount = budget.min;
+        maxAmount = budget.max;
+      }
+      
       const requirement = new ParentRequirement({
         parentId: user._id,
         requirementId: 'REQ-' + Date.now(),
-        studentDetails: studentDetails || {},
+        studentDetails: {
+          studentName: studentDetails?.studentName || '',
+          age: parseInt(studentDetails?.age, 10) || 0,
+          grade: studentDetails?.grade || studentDetails?.className || '',
+          board: studentDetails?.board || tuitionRequirement?.board || '',
+          schoolName: studentDetails?.schoolName || '',
+          genderPreference: studentDetails?.gender?.toLowerCase() || 'any',
+          multipleChildren: false
+        },
         subjects: tuitionRequirement?.subjects || [],
-        languagePreference: ['English', 'Hindi'],
-        tuitionType: tuitionRequirement?.tuitionMode || 'home',
-        location: locationDetails || {},
+        languagePreference: ['English'],
+        tuitionType,
+        location: {
+          address: locationDetails?.address || '',
+          city: locationDetails?.city || '',
+          pincode: locationDetails?.pincode || '',
+          coordinates: {
+            latitude: parseFloat(locationDetails?.latitude) || 0,
+            longitude: parseFloat(locationDetails?.longitude) || 0
+          },
+          teachingRadius: parseInt(locationDetails?.teachingRadius) || 5
+        },
         schedule: {
-          daysPerWeek: tuitionRequirement?.preferredTiming || '3',
-          preferredTimings: [tuitionRequirement?.preferredTiming || 'Evening']
+          daysPerWeek: scheduleDetails?.daysPerWeek || '3',
+          preferredTimings: scheduleDetails?.preferredTimings || 
+            (tuitionRequirement?.preferredTiming ? [tuitionRequirement.preferredTiming] : ['Evening']),
+          startDate: scheduleDetails?.startDate || new Date().toISOString().split('T')[0]
         },
         tutorPreferences: tutorPreferences || '',
-        budget: budgetDetails || { minAmount: 0, maxAmount: 0, negotiationAllowed: true },
+        budget: { 
+          minAmount: minAmount || 0, 
+          maxAmount: maxAmount || 0, 
+          negotiationAllowed: true 
+        },
         status: 'active',
         priority: 'medium',
         matchedTutors: [],
@@ -671,6 +754,17 @@ app.post('/api/auth/register-complete', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Register-complete error:', error);
+    
+    // Cleanup: Delete user if it was created but profile creation failed
+    if (user && user._id) {
+      try {
+        await User.findByIdAndDelete(user._id);
+        console.log('🗑️  Cleaned up user:', user.email);
+      } catch (cleanupError) {
+        console.error('❌ Failed to cleanup user:', cleanupError);
+      }
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Registration failed: ' + error.message
@@ -816,6 +910,7 @@ console.log('   POST /api/auth/login');
 console.log('   POST /api/auth/signup');
 console.log('   POST /api/auth/send-otp (Dev OTP: 123456)');
 console.log('   POST /api/auth/verify-otp');
+console.log('   POST /api/auth/check-duplicate');
 console.log('   POST /api/auth/register-complete');
 
 // Debug route to list all registered routes

@@ -12,12 +12,29 @@ import { initializeFirebase } from './config/firebase';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { 
+  errorTracker, 
+  requestIdMiddleware, 
+  requestLogger,
+  handleUnhandledRejection,
+  handleUncaughtException 
+} from './middleware/errorTracker';
 import { startMatchingCron } from './services/matchingCron';
 
 // Load environment variables
 dotenv.config();
 
+// Register process-level error handlers
+process.on('unhandledRejection', handleUnhandledRejection);
+process.on('uncaughtException', handleUncaughtException);
+
 const app = express();
+
+// Request ID middleware for tracing
+app.use(requestIdMiddleware);
+
+// Request logging middleware
+app.use(requestLogger);
 const server = createServer(app);
 // Socket.IO Configuration - Allow multiple origins for mobile development
 const io = new Server(server, {
@@ -132,8 +149,9 @@ io.on('connection', (socket) => {
   });
 });
 
-// Error handling middleware
+// Error handling middleware (enhanced error tracker first, then fallback)
 app.use(notFound);
+app.use(errorTracker);
 app.use(errorHandler);
 
 // Start server

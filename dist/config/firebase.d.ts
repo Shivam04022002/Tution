@@ -9,6 +9,9 @@ export declare const auth: {
     getUserByPhoneNumber: (phoneNumber: string) => Promise<{
         uid: string;
     } | admin.auth.UserRecord>;
+    verifyPhoneNumber: (phoneNumber: string, otp: string) => Promise<{
+        uid: string;
+    } | admin.auth.UserRecord>;
 };
 export declare const firestore: {
     collection: (name: string) => admin.firestore.CollectionReference<admin.firestore.DocumentData, admin.firestore.DocumentData> | null;

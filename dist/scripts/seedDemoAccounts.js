@@ -7,13 +7,55 @@ exports.seedDemoAccounts = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const dotenv_1 = require("dotenv");
+const readline_1 = __importDefault(require("readline"));
 (0, dotenv_1.config)();
-const User_1 = require("../models/User");
-const ParentRequirement_1 = require("../models/ParentRequirement");
-const TeacherProfile_1 = require("../models/TeacherProfile");
-const TutorMatch_1 = require("../models/TutorMatch");
-const TutorApplication_1 = require("../models/TutorApplication");
-const DemoClass_1 = require("../models/DemoClass");
+let User, ParentRequirement, TeacherProfile, TutorMatch, TutorApplication, DemoClass;
+const args = process.argv.slice(2);
+const FORCE_MODE = args.includes('--force');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const safetyCheck = async () => {
+    if (IS_PRODUCTION && !FORCE_MODE) {
+        console.log('\n⚠️  WARNING: You are about to seed demo data in PRODUCTION environment!');
+        console.log('This will create test accounts with known credentials.');
+        console.log('\nType "yes" to continue, or press Ctrl+C to abort:');
+        const rl = readline_1.default.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+        return new Promise((resolve) => {
+            rl.question('> ', (answer) => {
+                rl.close();
+                resolve(answer.toLowerCase().trim() === 'yes');
+            });
+        });
+    }
+    return true;
+};
+const loadModels = () => {
+    try {
+        const userModule = require('../models/User');
+        const parentReqModule = require('../models/ParentRequirement');
+        const teacherProfileModule = require('../models/TeacherProfile');
+        const tutorMatchModule = require('../models/TutorMatch');
+        const tutorAppModule = require('../models/TutorApplication');
+        const demoClassModule = require('../models/DemoClass');
+        User = userModule.User;
+        ParentRequirement = parentReqModule.ParentRequirement;
+        TeacherProfile = teacherProfileModule.TeacherProfile;
+        TutorMatch = tutorMatchModule.TutorMatch;
+        TutorApplication = tutorAppModule.TutorApplication;
+        DemoClass = demoClassModule.DemoClass;
+        if (!User || !ParentRequirement || !TeacherProfile || !TutorMatch || !TutorApplication || !DemoClass) {
+            console.error('❌ One or more models failed to load');
+            process.exit(1);
+        }
+        console.log('✅ Models loaded successfully');
+    }
+    catch (error) {
+        console.error('❌ Failed to load models:', error);
+        process.exit(1);
+    }
+};
 const DEMO_PARENT = {
     role: 'parent',
     fullName: 'Demo Parent',
@@ -50,22 +92,22 @@ const connectDB = async () => {
 };
 const clearDemoData = async () => {
     console.log('\n🧹 Clearing existing demo data...');
-    const parentUser = await User_1.User.findOne({ email: DEMO_PARENT.email });
-    const teacherUser = await User_1.User.findOne({ email: DEMO_TEACHER.email });
+    const parentUser = await User.findOne({ email: DEMO_PARENT.email });
+    const teacherUser = await User.findOne({ email: DEMO_TEACHER.email });
     if (parentUser) {
-        await ParentRequirement_1.ParentRequirement.deleteMany({ parentId: parentUser._id });
-        await TutorMatch_1.TutorMatch.deleteMany({ parentId: parentUser._id });
-        await TutorApplication_1.TutorApplication.deleteMany({ parentId: parentUser._id });
-        await DemoClass_1.DemoClass.deleteMany({ parentId: parentUser._id });
-        await User_1.User.findByIdAndDelete(parentUser._id);
+        await ParentRequirement.deleteMany({ parentId: parentUser._id });
+        await TutorMatch.deleteMany({ parentId: parentUser._id });
+        await TutorApplication.deleteMany({ parentId: parentUser._id });
+        await DemoClass.deleteMany({ parentId: parentUser._id });
+        await User.findByIdAndDelete(parentUser._id);
         console.log('  🗑️  Deleted existing demo parent and related data');
     }
     if (teacherUser) {
-        await TeacherProfile_1.TeacherProfile.deleteMany({ userId: teacherUser._id });
-        await TutorMatch_1.TutorMatch.deleteMany({ teacherId: teacherUser._id });
-        await TutorApplication_1.TutorApplication.deleteMany({ teacherId: teacherUser._id });
-        await DemoClass_1.DemoClass.deleteMany({ teacherId: teacherUser._id });
-        await User_1.User.findByIdAndDelete(teacherUser._id);
+        await TeacherProfile.deleteMany({ userId: teacherUser._id });
+        await TutorMatch.deleteMany({ teacherId: teacherUser._id });
+        await TutorApplication.deleteMany({ teacherId: teacherUser._id });
+        await DemoClass.deleteMany({ teacherId: teacherUser._id });
+        await User.findByIdAndDelete(teacherUser._id);
         console.log('  🗑️  Deleted existing demo teacher and related data');
     }
     if (!parentUser && !teacherUser) {
@@ -75,9 +117,9 @@ const clearDemoData = async () => {
 const createDemoParent = async () => {
     console.log('\n👤 Creating Demo Parent...');
     const hashedPassword = await hashPassword(DEMO_PARENT.password);
-    const parentUser = new User_1.User({
+    const parentUser = new User({
         email: DEMO_PARENT.email,
-        phoneNumber: DEMO_PARENT.mobileNumber,
+        mobileNumber: DEMO_PARENT.mobileNumber,
         password: hashedPassword,
         role: 'parent',
         profile: {
@@ -89,7 +131,7 @@ const createDemoParent = async () => {
     });
     await parentUser.save();
     console.log(`  ✅ Parent User created: ${parentUser._id}`);
-    const requirement = new ParentRequirement_1.ParentRequirement({
+    const requirement = new ParentRequirement({
         parentId: parentUser._id,
         requirementId: generateId('REQ'),
         studentDetails: {
@@ -141,9 +183,9 @@ const createDemoParent = async () => {
 const createDemoTeacher = async () => {
     console.log('\n👨‍🏫 Creating Demo Teacher...');
     const hashedPassword = await hashPassword(DEMO_TEACHER.password);
-    const teacherUser = new User_1.User({
+    const teacherUser = new User({
         email: DEMO_TEACHER.email,
-        phoneNumber: DEMO_TEACHER.mobileNumber,
+        mobileNumber: DEMO_TEACHER.mobileNumber,
         password: hashedPassword,
         role: 'teacher',
         profile: {
@@ -155,7 +197,7 @@ const createDemoTeacher = async () => {
     });
     await teacherUser.save();
     console.log(`  ✅ Teacher User created: ${teacherUser._id}`);
-    const teacherProfile = new TeacherProfile_1.TeacherProfile({
+    const teacherProfile = new TeacherProfile({
         userId: teacherUser._id,
         basicDetails: {
             fullName: 'Demo Teacher',
@@ -181,7 +223,7 @@ const createDemoTeacher = async () => {
             specialization: 'Mathematics',
             teachingModes: ['student_home', 'online'],
             groupTuitionOption: false,
-            groupSize: 0,
+            groupSize: 5,
             groupRate: 0,
         },
         locationAvailability: {
@@ -208,12 +250,12 @@ const createDemoTeacher = async () => {
             negotiationAllowed: true,
         },
         verificationDocuments: {
-            aadhaarCard: '',
-            panCard: '',
+            aadhaarCard: 'DEMO-AADHAAR-1234',
+            panCard: 'DEMO-PAN-ABCDE1234F',
             qualificationDocuments: [],
             portfolioPhotos: [],
         },
-        verificationStatus: 'approved',
+        verificationStatus: 'verified',
         stats: {
             totalStudents: 0,
             activeStudents: 0,
@@ -241,7 +283,7 @@ const createDemoTeacher = async () => {
 };
 const createTutorMatch = async (parentUser, requirement, teacherUser, teacherProfile) => {
     console.log('\n🔗 Creating TutorMatch...');
-    const match = new TutorMatch_1.TutorMatch({
+    const match = new TutorMatch({
         requirementId: requirement._id,
         teacherId: teacherUser._id,
         teacherProfileId: teacherProfile._id,
@@ -293,12 +335,17 @@ const createTutorMatch = async (parentUser, requirement, teacherUser, teacherPro
             },
             timingScore: 90,
             timingMatchDetails: {
-                requirementDays: ['Monday', 'Wednesday', 'Friday'],
-                teacherDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
                 requirementTimeSlots: ['Evening'],
+                teacherDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
                 teacherTimeSlots: ['Morning', 'Afternoon', 'Evening'],
-                dayOverlap: ['Monday', 'Wednesday', 'Friday'],
                 timeOverlap: ['Evening'],
+                timeScore: 90,
+            },
+            bonusDetails: {
+                genderScore: 0,
+                languageScore: 10,
+                experienceScore: 15,
+                totalBonus: 25,
             },
         },
         algorithmVersion: 'v1.0',
@@ -312,7 +359,7 @@ const createTutorMatch = async (parentUser, requirement, teacherUser, teacherPro
 };
 const createTutorApplication = async (requirement, teacherUser, teacherProfile, parentUser) => {
     console.log('\n📝 Creating TutorApplication...');
-    const application = new TutorApplication_1.TutorApplication({
+    const application = new TutorApplication({
         parentRequirementId: requirement._id,
         teacherId: teacherUser._id,
         teacherProfileId: teacherProfile._id,
@@ -338,7 +385,7 @@ const createDemoClass = async (parentUser, teacherUser, teacherProfile, requirem
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(17, 0, 0, 0);
-    const demoClass = new DemoClass_1.DemoClass({
+    const demoClass = new DemoClass({
         demoId: generateId('DEMO'),
         parentId: parentUser._id,
         teacherId: teacherUser._id,
@@ -355,7 +402,7 @@ const createDemoClass = async (parentUser, teacherUser, teacherProfile, requirem
         duration: 60,
         mode: 'offline',
         meetingDetails: {
-            platform: 'In-Person',
+            platform: 'in_person',
             address: '123 Demo Street, Kanpur',
         },
         status: 'scheduled',
@@ -370,8 +417,14 @@ const seedDemoAccounts = async () => {
     console.log('='.repeat(60));
     console.log('🌱 DEMO ACCOUNTS SEED SCRIPT');
     console.log('='.repeat(60));
+    const shouldProceed = await safetyCheck();
+    if (!shouldProceed) {
+        console.log('\n❌ Seeding aborted by user');
+        process.exit(0);
+    }
     try {
         await connectDB();
+        loadModels();
         await clearDemoData();
         const { user: parentUser, requirement } = await createDemoParent();
         const { user: teacherUser, profile: teacherProfile } = await createDemoTeacher();

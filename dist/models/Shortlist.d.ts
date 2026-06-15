@@ -4,6 +4,7 @@ export interface IShortlist extends Document {
     teacherId: mongoose.Types.ObjectId;
     teacherProfileId: mongoose.Types.ObjectId;
     requirementId: mongoose.Types.ObjectId;
+    className?: string;
     notes?: string;
     matchScore?: number;
     isContacted: boolean;
