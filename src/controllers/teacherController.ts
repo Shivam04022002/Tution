@@ -4,14 +4,6 @@ import { User } from '../models/User';
 import { ParentRequirement } from '../models/ParentRequirement';
 import { TutorMatch } from '../models/TutorMatch';
 import { AuthRequest } from '../middleware/auth';
-import { v2 as cloudinary } from 'cloudinary';
-
-// Configure Cloudinary (assuming it's configured in config)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 // Register new teacher
 export const registerTeacher = async (req: AuthRequest, res: Response) => {
@@ -53,34 +45,65 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
     let aadhaarDocumentUrl = '';
     const certificateUrls: string[] = [];
 
-    // Upload files to Cloudinary if files are present
+    // Import centralized services
+    const { 
+      uploadMulterFile, 
+      generateS3Key, 
+      generateCloudFrontUrl 
+    } = await import('../services/s3Service');
+    const { 
+      validateFile 
+    } = await import('../services/fileValidationService');
+
+    // Upload files to S3 if files are present
     if (files) {
       // Profile Picture
       if (files.profilePicture && files.profilePicture[0]) {
-        const result = await cloudinary.uploader.upload(files.profilePicture[0].path, {
-          folder: 'teachers/profile-pictures',
-          public_id: `profile_${firebaseUid}`,
-        });
-        profilePictureUrl = result.secure_url;
+        // Validate file using centralized validation service
+        const validation = validateFile(files.profilePicture[0], 'profile-image');
+        if (!validation.isValid) {
+          return res.status(400).json({
+            success: false,
+            message: validation.error,
+          });
+        }
+
+        const s3Key = generateS3Key('profile-images', firebaseUid, files.profilePicture[0].originalname);
+        await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
+        profilePictureUrl = generateCloudFrontUrl(s3Key);
       }
 
       // Aadhaar Document
       if (files.aadhaarDocument && files.aadhaarDocument[0]) {
-        const result = await cloudinary.uploader.upload(files.aadhaarDocument[0].path, {
-          folder: 'teachers/documents',
-          public_id: `aadhaar_${firebaseUid}`,
-        });
-        aadhaarDocumentUrl = result.secure_url;
+        // Validate file using centralized validation service
+        const validation = validateFile(files.aadhaarDocument[0], 'document');
+        if (!validation.isValid) {
+          return res.status(400).json({
+            success: false,
+            message: validation.error,
+          });
+        }
+
+        const s3Key = generateS3Key('documents', firebaseUid, files.aadhaarDocument[0].originalname);
+        await uploadMulterFile(files.aadhaarDocument[0], { key: s3Key, contentType: files.aadhaarDocument[0].mimetype });
+        aadhaarDocumentUrl = generateCloudFrontUrl(s3Key);
       }
 
       // Certificates
       if (files.certificates && files.certificates.length > 0) {
         for (let i = 0; i < files.certificates.length; i++) {
-          const result = await cloudinary.uploader.upload(files.certificates[i].path, {
-            folder: 'teachers/certificates',
-            public_id: `certificate_${firebaseUid}_${i}`,
-          });
-          certificateUrls.push(result.secure_url);
+          // Validate file using centralized validation service
+          const validation = validateFile(files.certificates[i], 'certificate');
+          if (!validation.isValid) {
+            return res.status(400).json({
+              success: false,
+              message: validation.error,
+            });
+          }
+
+          const s3Key = generateS3Key('certificates', firebaseUid, files.certificates[i].originalname);
+          await uploadMulterFile(files.certificates[i], { key: s3Key, contentType: files.certificates[i].mimetype });
+          certificateUrls.push(generateCloudFrontUrl(s3Key));
         }
       }
     }
@@ -271,6 +294,35 @@ export const getTeacherProfile = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Utility: Recursively flatten nested object to dot-notation
+// { a: { b: 1 } } => { 'a.b': 1 }
+const flattenObject = (obj: any, prefix = '', result: Record<string, any> = {}): Record<string, any> => {
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const newKey = prefix ? `${prefix}.${key}` : key;
+      const value = obj[key];
+
+      // Handle null and undefined
+      if (value === null || value === undefined) {
+        result[newKey] = value;
+      }
+      // Handle arrays (treat as leaf values)
+      else if (Array.isArray(value)) {
+        result[newKey] = value;
+      }
+      // Handle nested objects
+      else if (typeof value === 'object' && !Array.isArray(value)) {
+        flattenObject(value, newKey, result);
+      }
+      // Handle primitive values
+      else {
+        result[newKey] = value;
+      }
+    }
+  }
+  return result;
+};
+
 // Update teacher profile
 export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -310,6 +362,7 @@ export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
       'teachingDetails.groupSize',
       'locationAvailability.address',
       'locationAvailability.preferredAreas',
+      'locationAvailability.preferredLocations',
       'locationAvailability.availableDays',
       'locationAvailability.availableTimeSlots',
       'locationAvailability.vacationMode',
@@ -321,22 +374,53 @@ export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
     ];
 
     const updates = req.body;
+
+    // Flatten nested objects to dot-notation for safe partial updates
+    // { locationAvailability: { preferredLocations: [] } }
+    // => { 'locationAvailability.preferredLocations': [] }
+    const flattenedUpdates = flattenObject(updates);
+
     const updateData: any = {};
 
-    Object.keys(updates).forEach((key) => {
-      if (allowedUpdates.includes(key) || allowedUpdates.some((allowed) => key.startsWith(allowed + '.'))) {
-        updateData[key] = updates[key];
+    // Validate flattened keys against whitelist
+    Object.keys(flattenedUpdates).forEach((key) => {
+      // Direct match: 'locationAvailability.preferredLocations'
+      if (allowedUpdates.includes(key)) {
+        updateData[key] = flattenedUpdates[key];
+      }
+      // Prefix match: 'locationAvailability.preferredLocations.0.area' starts with allowed path
+      else if (allowedUpdates.some((allowed) => key.startsWith(allowed + '.'))) {
+        updateData[key] = flattenedUpdates[key];
       }
     });
 
     // Handle file uploads if present
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     if (files?.profilePicture?.[0]) {
-      const result = await cloudinary.uploader.upload(files.profilePicture[0].path, {
-        folder: 'teachers/profile-pictures',
-        public_id: `profile_${req.user?.firebaseUid}_${Date.now()}`,
+      // Import centralized services
+      const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await import('../services/s3Service');
+      const { validateFile } = await import('../services/fileValidationService');
+
+      // Validate file using centralized validation service
+      const validation = validateFile(files.profilePicture[0], 'profile-image');
+      if (!validation.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.error,
+        });
+      }
+
+      const s3Key = generateS3Key('profile-images', req.user?.firebaseUid || 'unknown', files.profilePicture[0].originalname);
+      await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
+      updateData['basicDetails.profilePhoto'] = generateCloudFrontUrl(s3Key);
+    }
+
+    // Check if any valid updates remain after filtering
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid updates provided. Check field names against allowed updates.',
       });
-      updateData['basicDetails.profilePhoto'] = result.secure_url;
     }
 
     const updatedProfile = await TeacherProfile.findOneAndUpdate(
@@ -887,15 +971,42 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Import centralized services
+    const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await import('../services/s3Service');
+    const { validateFile } = await import('../services/fileValidationService');
+
     // Upload each file type
     for (const [fieldName, fileArray] of Object.entries(files)) {
       uploadedUrls[fieldName] = [];
       for (const file of fileArray) {
-        const result = await cloudinary.uploader.upload(file.path, {
-          folder: `teachers/${fieldName}`,
-          public_id: `${fieldName}_${req.user?.firebaseUid}_${Date.now()}`,
-        });
-        uploadedUrls[fieldName].push(result.secure_url);
+        // Determine file type for validation
+        let mediaType: 'certificate' | 'document' = 'document';
+        if (fieldName === 'certificates') {
+          mediaType = 'certificate';
+        } else if (fieldName === 'portfolio') {
+          mediaType = 'document';
+        }
+
+        // Validate file using centralized validation service
+        const validation = validateFile(file, mediaType);
+        if (!validation.isValid) {
+          return res.status(400).json({
+            success: false,
+            message: validation.error,
+          });
+        }
+
+        // Upload to S3
+        const s3Key = generateS3Key(
+          fieldName === 'certificates' ? 'certificates' : 'documents',
+          req.user?.firebaseUid || 'unknown',
+          file.originalname
+        );
+        await uploadMulterFile(file, { key: s3Key, contentType: file.mimetype });
+
+        // Generate CloudFront URL
+        const cloudFrontUrl = generateCloudFrontUrl(s3Key);
+        uploadedUrls[fieldName].push(cloudFrontUrl);
       }
     }
 

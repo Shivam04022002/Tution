@@ -132,13 +132,19 @@ export const registerParent = async (req: AuthRequest, res: Response) => {
     });
 
     // Update user with parent role and profile info
+    // Split parentName into firstName and lastName for schema compliance
+    const parentNameParts = (parentDetails?.parentName || '').trim().split(/\s+/);
+    const firstName = parentNameParts[0] || 'Parent';
+    const lastName = parentNameParts.slice(1).join(' ') || '';
+
     await User.findByIdAndUpdate(userId, {
       role: 'parent',
+      email: parentDetails?.email || req.user?.email,
+      phoneNumber: parentDetails?.mobileNumber || req.user?.phoneNumber,
       profile: {
         ...((req.user as any)?.profile || {}),
-        parentName: parentDetails?.parentName,
-        mobileNumber: parentDetails?.mobileNumber,
-        email: parentDetails?.email,
+        firstName,
+        lastName,
       },
       isProfileComplete: true,
     });
@@ -174,12 +180,35 @@ export const getParentProfile = async (req: AuthRequest, res: Response) => {
     }
 
     // Get user details
-    const user = await User.findById(userId).select('-password -firebaseUid');
+    let user = await User.findById(userId).select('-password -firebaseUid');
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
       });
+    }
+
+    // Backward compatibility: migrate profile.parentName to firstName/lastName if needed
+    const profileAny = user.profile as any;
+    if (profileAny?.parentName && (!user.profile?.firstName || user.profile?.firstName === '')) {
+      const parentNameParts = profileAny.parentName.trim().split(/\s+/);
+      const migratedFirstName = parentNameParts[0] || 'Parent';
+      const migratedLastName = parentNameParts.slice(1).join(' ') || '';
+
+      // Update the user document with migrated fields
+      user = await User.findByIdAndUpdate(
+        userId,
+        {
+          $set: {
+            'profile.firstName': migratedFirstName,
+            'profile.lastName': migratedLastName,
+          },
+          $unset: { 'profile.parentName': 1 },
+        },
+        { new: true, runValidators: false }
+      ).select('-password -firebaseUid');
+
+      console.log(`[ParentProfile] Migrated parentName to firstName/lastName for user ${userId}`);
     }
 
     // Get all requirements for this parent
@@ -220,21 +249,43 @@ export const updateParentProfile = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Schema-aligned allowed updates (matches User model)
     const allowedUpdates = [
-      'profile.parentName',
-      'profile.mobileNumber',
-      'profile.email',
-      'profile.address',
+      'firstName',           // Maps to profile.firstName
+      'lastName',            // Maps to profile.lastName
+      'email',               // Maps to root-level email
+      'phoneNumber',         // Maps to root-level phoneNumber
+      'profile.firstName',   // Direct profile path
+      'profile.lastName',    // Direct profile path
+      'profile.profileImage',
+      'profile.dateOfBirth',
+      'profile.gender',
     ];
 
     const updates = req.body;
     const updateData: any = {};
 
+    // Process updates with schema alignment
     Object.keys(updates).forEach((key) => {
       if (allowedUpdates.includes(key) || allowedUpdates.some((allowed) => key.startsWith(allowed + '.'))) {
         updateData[key] = updates[key];
       }
     });
+
+    // Handle backward compatibility: if old format sent, convert to new format
+    if (updates.firstName && !updateData['profile.firstName']) {
+      updateData['profile.firstName'] = updates.firstName;
+    }
+    if (updates.lastName && !updateData['profile.lastName']) {
+      updateData['profile.lastName'] = updates.lastName;
+    }
+    if (updates.email && !updateData['email']) {
+      updateData['email'] = updates.email;
+    }
+    if (updates.address?.city || updates.address?.state) {
+      // Address is not in User schema, skip or log
+      console.log('[ParentProfile] Address fields received but not stored in User schema');
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,
