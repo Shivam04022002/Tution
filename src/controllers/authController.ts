@@ -567,14 +567,17 @@ export const registerComplete = async (req: Request, res: Response) => {
       let hourlyRate = 0;
       if (pricingDetails?.pricing === 'Custom Amount') {
         monthlyRate = parseInt(pricingDetails.customAmount) || 0;
-      } else {
-        const range = pricingDetails?.pricing?.replace('₹', '').split('-');
-        if (range && range.length === 2) {
-          monthlyRate = (parseInt(range[0]) + parseInt(range[1])) / 2;
-        } else if (pricingDetails?.pricing?.includes('10000+')) {
-          monthlyRate = 10000;
+      } else if (pricingDetails?.pricing?.includes('10000+')) {
+        monthlyRate = 10000;
+      } else if (pricingDetails?.pricing) {
+        // Handle formats like '₹1000-₹2000', '₹1000 - ₹2000', '1000-2000'
+        const clean = pricingDetails.pricing.replace(/₹/g, '').replace(/\s/g, '');
+        const range = clean.split('-').filter(Boolean);
+        if (range.length === 2) {
+          monthlyRate = ((parseInt(range[0]) || 0) + (parseInt(range[1]) || 0)) / 2;
         }
       }
+      monthlyRate = Math.max(1000, monthlyRate);
       hourlyRate = Math.max(50, Math.round(monthlyRate / 40));
 
       // Create teacher profile
