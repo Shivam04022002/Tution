@@ -146,14 +146,14 @@ userSchema.virtual('fullName').get(function() {
 });
 
 // Pre-save middleware
-userSchema.pre('save', async function(next: any) {
+userSchema.pre('save', async function() {
   // Check if profile is completed
   const requiredFields = ['firstName', 'lastName'];
-  const isProfileComplete = requiredFields.every(field => 
-    this.profile[field as keyof typeof this.profile] && 
+  const isProfileComplete = requiredFields.every(field =>
+    this.profile[field as keyof typeof this.profile] &&
     this.profile[field as keyof typeof this.profile]?.toString().trim() !== ''
   );
-  
+
   if (isProfileComplete && !this.profileCompleted) {
     this.profileCompleted = true;
   }
@@ -163,8 +163,6 @@ userSchema.pre('save', async function(next: any) {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
   }
-  
-  next();
 });
 
 // Compare password method
