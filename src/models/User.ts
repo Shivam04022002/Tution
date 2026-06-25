@@ -69,7 +69,7 @@ const userSchema = new Schema<IUser>({
     },
     lastName: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     profileImage: {
@@ -142,7 +142,7 @@ userSchema.index({ isVerified: 1 });
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
-  return `${this.profile.firstName} ${this.profile.lastName}`;
+  return [this.profile.firstName, this.profile.lastName].filter(Boolean).join(' ');
 });
 
 // Pre-save middleware
