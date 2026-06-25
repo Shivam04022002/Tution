@@ -555,6 +555,13 @@ export const registerComplete = async (req: Request, res: Response) => {
         '10+ Years': 12,
       };
 
+      // Normalize teachingMode to array (frontend may send a string or array)
+      const teachingModeArray = Array.isArray(teachingMode)
+        ? teachingMode
+        : teachingMode
+          ? [teachingMode]
+          : [];
+
       // Parse pricing
       let monthlyRate = 0;
       let hourlyRate = 0;
@@ -595,7 +602,7 @@ export const registerComplete = async (req: Request, res: Response) => {
           classes: teachingDetails?.classes || [],
           boards: teachingDetails?.boards || [],
           specialization: teachingDetails?.subjects?.[0] || '',
-          teachingModes: (teachingMode || []).map((m: string) => {
+          teachingModes: teachingModeArray.map((m: string) => {
             const modeMap: { [key: string]: string } = {
               'Home Tuition': 'student_home',
               'Online Tuition': 'online',
@@ -604,7 +611,7 @@ export const registerComplete = async (req: Request, res: Response) => {
             };
             return modeMap[m] || m.toLowerCase().replace(' ', '_');
           }),
-          groupTuitionOption: teachingMode?.includes('Group Tuition') || false,
+          groupTuitionOption: teachingModeArray.includes('Group Tuition') || false,
           groupSize: 5,
           groupRate: 0,
         },

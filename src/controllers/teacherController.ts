@@ -133,6 +133,13 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
     }
     hourlyRate = Math.max(50, Math.round(monthlyRate / 40)); // Assuming 40 hours per month, min 50
 
+    // Normalize teachingMode to array (frontend may send a string or array)
+    const teachingModeArray = Array.isArray(teachingMode)
+      ? teachingMode
+      : teachingMode
+        ? [teachingMode]
+        : [];
+
     // Create teacher profile
     const teacherProfile = new TeacherProfile({
       userId,
@@ -163,7 +170,7 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
         classes: teachingDetails?.classes || [],
         boards: teachingDetails?.boards || [],
         specialization: teachingDetails?.subjects?.[0] || '',
-        teachingModes: (teachingMode || []).map((mode: string) => {
+        teachingModes: teachingModeArray.map((mode: string) => {
           const modeMap: { [key: string]: string } = {
             'Home Tuition': 'student_home',
             'Online Tuition': 'online',
@@ -172,7 +179,7 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
           };
           return modeMap[mode] || mode.toLowerCase().replace(' ', '_');
         }),
-        groupTuitionOption: teachingMode?.includes('Group Tuition') || false,
+        groupTuitionOption: teachingModeArray.includes('Group Tuition') || false,
         groupSize: 5,
         groupRate: 0,
       },
