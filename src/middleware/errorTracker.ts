@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Error categories for classification
@@ -226,7 +225,7 @@ export const handleUncaughtException = (error: Error) => {
  * Adds unique request ID for tracing
  */
 export const requestIdMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const requestId = req.get('X-Request-ID') || uuidv4();
+  const requestId = req.get('X-Request-ID') || generateErrorId();
   (req as any).requestId = requestId;
   res.setHeader('X-Request-ID', requestId);
   next();

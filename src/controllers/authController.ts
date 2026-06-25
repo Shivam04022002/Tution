@@ -568,7 +568,7 @@ export const registerComplete = async (req: Request, res: Response) => {
           monthlyRate = 10000;
         }
       }
-      hourlyRate = Math.round(monthlyRate / 40);
+      hourlyRate = Math.max(50, Math.round(monthlyRate / 40));
 
       // Create teacher profile
       const teacherProfile = new TeacherProfile({
@@ -618,6 +618,21 @@ export const registerComplete = async (req: Request, res: Response) => {
           availableDays: availability?.days || [],
           availableTimeSlots: availability?.timeSlots || [],
           vacationMode: false,
+        },
+        discoverability: {
+          availableForNewStudents: true,
+          visibleInMarketplace: true,
+          onlineStatus: 'hybrid',
+          travelSettings: {
+            maxTravelDistance: 10,
+            preferredTravelModes: [],
+          },
+          locationCoverage: {
+            state: personalDetails?.state || personalDetails?.city || '',
+            city: personalDetails?.city || '',
+            areas: locationPreferences || [],
+            pincodes: personalDetails?.pincode ? [personalDetails.pincode] : [],
+          },
         },
         bio: professionalDetails?.bio || '',
         pricingRevenue: {
@@ -681,6 +696,16 @@ export const registerComplete = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Complete registration error:', error);
+
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e: any) => e.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: messages,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: 'Failed to create account',
