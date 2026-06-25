@@ -227,7 +227,7 @@ const TeacherProfileSchema: Schema = new Schema({
     },
     university: {
       type: String,
-      required: true,
+      default: '',
     },
     yearOfCompletion: {
       type: Number,
@@ -506,11 +506,11 @@ const TeacherProfileSchema: Schema = new Schema({
   verificationDocuments: {
     aadhaarCard: {
       type: String,
-      required: true,
+      default: '',
     },
     panCard: {
       type: String,
-      required: true,
+      default: '',
     },
     qualificationDocuments: [{
       type: String,
