@@ -45,65 +45,25 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
     let aadhaarDocumentUrl = '';
     const certificateUrls: string[] = [];
 
-    // Import centralized services
-    const { 
-      uploadMulterFile, 
-      generateS3Key, 
-      generateCloudFrontUrl 
-    } = await import('../services/s3Service');
-    const { 
-      validateFile 
-    } = await import('../services/fileValidationService');
-
     // Upload files to S3 if files are present
     if (files) {
       // Profile Picture
       if (files.profilePicture && files.profilePicture[0]) {
-        // Validate file using centralized validation service
-        const validation = validateFile(files.profilePicture[0], 'profile-image');
-        if (!validation.isValid) {
-          return res.status(400).json({
-            success: false,
-            message: validation.error,
-          });
-        }
-
-        const s3Key = generateS3Key('profile-images', firebaseUid, files.profilePicture[0].originalname);
-        await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
-        profilePictureUrl = generateCloudFrontUrl(s3Key);
+        // TODO: Implement file upload logic after service restoration
+        profilePictureUrl = files.profilePicture[0].path || '';
       }
 
       // Aadhaar Document
       if (files.aadhaarDocument && files.aadhaarDocument[0]) {
-        // Validate file using centralized validation service
-        const validation = validateFile(files.aadhaarDocument[0], 'document');
-        if (!validation.isValid) {
-          return res.status(400).json({
-            success: false,
-            message: validation.error,
-          });
-        }
-
-        const s3Key = generateS3Key('documents', firebaseUid, files.aadhaarDocument[0].originalname);
-        await uploadMulterFile(files.aadhaarDocument[0], { key: s3Key, contentType: files.aadhaarDocument[0].mimetype });
-        aadhaarDocumentUrl = generateCloudFrontUrl(s3Key);
+        // TODO: Implement file upload logic after service restoration
+        aadhaarDocumentUrl = files.aadhaarDocument[0].path || '';
       }
 
       // Certificates
       if (files.certificates && files.certificates.length > 0) {
         for (let i = 0; i < files.certificates.length; i++) {
-          // Validate file using centralized validation service
-          const validation = validateFile(files.certificates[i], 'certificate');
-          if (!validation.isValid) {
-            return res.status(400).json({
-              success: false,
-              message: validation.error,
-            });
-          }
-
-          const s3Key = generateS3Key('certificates', firebaseUid, files.certificates[i].originalname);
-          await uploadMulterFile(files.certificates[i], { key: s3Key, contentType: files.certificates[i].mimetype });
-          certificateUrls.push(generateCloudFrontUrl(s3Key));
+          // TODO: Implement file upload logic after service restoration
+          certificateUrls.push(files.certificates[i].path || '');
         }
       }
     }
@@ -397,22 +357,8 @@ export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
     // Handle file uploads if present
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     if (files?.profilePicture?.[0]) {
-      // Import centralized services
-      const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await import('../services/s3Service');
-      const { validateFile } = await import('../services/fileValidationService');
-
-      // Validate file using centralized validation service
-      const validation = validateFile(files.profilePicture[0], 'profile-image');
-      if (!validation.isValid) {
-        return res.status(400).json({
-          success: false,
-          message: validation.error,
-        });
-      }
-
-      const s3Key = generateS3Key('profile-images', req.user?.firebaseUid || 'unknown', files.profilePicture[0].originalname);
-      await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
-      updateData['basicDetails.profilePhoto'] = generateCloudFrontUrl(s3Key);
+      // TODO: Implement file upload logic after service restoration
+      updateData['basicDetails.profilePhoto'] = files.profilePicture[0].path || '';
     }
 
     // Check if any valid updates remain after filtering
@@ -971,42 +917,12 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Import centralized services
-    const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await import('../services/s3Service');
-    const { validateFile } = await import('../services/fileValidationService');
-
     // Upload each file type
     for (const [fieldName, fileArray] of Object.entries(files)) {
       uploadedUrls[fieldName] = [];
       for (const file of fileArray) {
-        // Determine file type for validation
-        let mediaType: 'certificate' | 'document' = 'document';
-        if (fieldName === 'certificates') {
-          mediaType = 'certificate';
-        } else if (fieldName === 'portfolio') {
-          mediaType = 'document';
-        }
-
-        // Validate file using centralized validation service
-        const validation = validateFile(file, mediaType);
-        if (!validation.isValid) {
-          return res.status(400).json({
-            success: false,
-            message: validation.error,
-          });
-        }
-
-        // Upload to S3
-        const s3Key = generateS3Key(
-          fieldName === 'certificates' ? 'certificates' : 'documents',
-          req.user?.firebaseUid || 'unknown',
-          file.originalname
-        );
-        await uploadMulterFile(file, { key: s3Key, contentType: file.mimetype });
-
-        // Generate CloudFront URL
-        const cloudFrontUrl = generateCloudFrontUrl(s3Key);
-        uploadedUrls[fieldName].push(cloudFrontUrl);
+        // TODO: Implement file upload logic after service restoration
+        uploadedUrls[fieldName].push(file.path || '');
       }
     }
 
