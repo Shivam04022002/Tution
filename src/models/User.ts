@@ -6,15 +6,27 @@ export interface IUser extends Document {
   email: string;
   phoneNumber: string;
   password?: string;
+  username?: string | null;
   role: 'parent' | 'teacher' | 'admin' | 'staff';
+  staffRole?: string | null;
   profile: {
     firstName: string;
     lastName: string;
-    profileImage?: string;
-    dateOfBirth?: Date;
-    gender?: 'male' | 'female' | 'other';
-    department?: string;
+    profileImage?: string | null;
+    dateOfBirth?: Date | null;
+    gender?: 'male' | 'female' | 'other' | null;
+    department?: string | null;
   };
+  employeeId?: string | null;
+  designation?: string | null;
+  department?: string | null;
+  joiningDate?: Date | null;
+  dateOfBirth?: Date | null;
+  gender?: 'male' | 'female' | 'other' | null;
+  permissions?: string[];
+  lastLogin?: Date | null;
+  createdBy?: mongoose.Types.ObjectId | null;
+  updatedBy?: mongoose.Types.ObjectId | null;
   profileCompleted: boolean;
   onboardingCompleted: boolean;
   preferences: {
@@ -52,8 +64,15 @@ const userSchema = new Schema<IUser>({
   },
   password: {
     type: String,
-    minlength: 6,
+    minlength: 8,
     select: false,
+  },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    lowercase: true,
   },
   role: {
     type: String,
@@ -89,6 +108,49 @@ const userSchema = new Schema<IUser>({
       type: String,
       default: null,
     },
+  },
+  staffRole: {
+    type: String,
+    default: null,
+  },
+  employeeId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+  },
+  designation: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  department: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  joiningDate: {
+    type: Date,
+    default: null,
+  },
+  permissions: {
+    type: [String],
+    default: [],
+  },
+  lastLogin: {
+    type: Date,
+    default: null,
+  },
+  createdBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  updatedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
   },
   profileCompleted: {
     type: Boolean,
@@ -136,9 +198,15 @@ const userSchema = new Schema<IUser>({
 userSchema.index({ firebaseUid: 1 });
 userSchema.index({ email: 1 });
 userSchema.index({ phoneNumber: 1 });
+userSchema.index({ username: 1 }, { unique: true, sparse: true });
+userSchema.index({ employeeId: 1 }, { unique: true, sparse: true });
 userSchema.index({ role: 1 });
+userSchema.index({ staffRole: 1 });
+userSchema.index({ department: 1 });
 userSchema.index({ isActive: 1 });
 userSchema.index({ isVerified: 1 });
+userSchema.index({ createdBy: 1 });
+userSchema.index({ updatedBy: 1 });
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
