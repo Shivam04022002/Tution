@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { User } from '../../src/models/User';
-import { initializeFirebase } from '../../src/config/firebase';
+import { User } from '../models/User';
+import { initializeFirebase } from '../config/firebase';
 
 // Load environment variables
 import dotenv from 'dotenv';
