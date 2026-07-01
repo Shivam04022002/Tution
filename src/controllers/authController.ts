@@ -150,6 +150,12 @@ export const verifyOTP = async (req: Request, res: Response) => {
       await user.save();
     }
 
+    // Update last login for staff users
+    if (user.role === 'staff') {
+      user.lastLogin = new Date();
+      await user.save();
+    }
+
     // Generate JWT token
     const token = generateToken(user._id.toString());
 
@@ -327,6 +333,12 @@ export const login = async (req: Request, res: Response) => {
         success: false,
         message: 'Account is deactivated',
       });
+    }
+
+    // Update last login for staff users
+    if (user.role === 'staff') {
+      user.lastLogin = new Date();
+      await user.save();
     }
 
     // Generate JWT token

@@ -6,6 +6,7 @@ import {
   updateStaff,
   deleteStaff,
   getStaffById,
+  resetStaffPassword,
 } from '../controllers/staffManagementController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -35,6 +36,25 @@ const createStaffValidation = [
     .trim()
     .isLength({ min: 2, max: 50 })
     .withMessage('Department must be between 2 and 50 characters'),
+  body('staffRole')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Staff role must be between 2 and 50 characters'),
+  body('designation')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Designation must be between 2 and 100 characters'),
+  body('username')
+    .optional()
+    .trim()
+    .isLength({ min: 3, max: 30 })
+    .withMessage('Username must be between 3 and 30 characters'),
+  body('permissions')
+    .optional()
+    .isArray()
+    .withMessage('Permissions must be an array of strings'),
 ];
 
 const updateStaffValidation = [
@@ -57,10 +77,36 @@ const updateStaffValidation = [
     .trim()
     .isLength({ min: 2, max: 50 })
     .withMessage('Department must be between 2 and 50 characters'),
+  body('staffRole')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Staff role must be between 2 and 50 characters'),
+  body('designation')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Designation must be between 2 and 100 characters'),
+  body('username')
+    .optional()
+    .trim()
+    .isLength({ min: 3, max: 30 })
+    .withMessage('Username must be between 3 and 30 characters'),
+  body('permissions')
+    .optional()
+    .isArray()
+    .withMessage('Permissions must be an array of strings'),
   body('isActive')
     .optional()
     .isBoolean()
     .withMessage('isActive must be a boolean value'),
+];
+
+const resetPasswordValidation = [
+  body('password')
+    .optional()
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long'),
 ];
 
 // Routes
@@ -98,5 +144,12 @@ router.put('/:id', updateStaffValidation, updateStaff);
  * @access  Admin only
  */
 router.delete('/:id', deleteStaff);
+
+/**
+ * @route   POST /api/admin/staff/:id/reset-password
+ * @desc    Reset staff user password
+ * @access  Admin only
+ */
+router.post('/:id/reset-password', resetPasswordValidation, resetStaffPassword);
 
 export default router;
