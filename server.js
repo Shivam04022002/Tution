@@ -1294,6 +1294,87 @@ app.get('/api/parents/profile/me', authenticateToken, async (req, res) => {
 });
 
 // ==========================================
+// PARENT REQUIREMENT (POST REQUIREMENT FORM)
+// ==========================================
+app.post('/api/parents/requirements', authenticateToken, async (req, res) => {
+  try {
+    const {
+      studentName,
+      grade,
+      board,
+      subjects,
+      tuitionType,
+      address,
+      city,
+      pincode,
+      budgetMin,
+      budgetMax,
+      preferredDays,
+      preferredTimings,
+      notes,
+    } = req.body;
+
+    if (!studentName || !grade || !board || !subjects?.length || !tuitionType || !budgetMax) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    const requirementId = ParentRequirement.generateRequirementId();
+
+    const requirement = new ParentRequirement({
+      parentId: req.user._id,
+      requirementId,
+      studentDetails: {
+        studentName: studentName.trim(),
+        grade: grade.trim(),
+        board: board.trim(),
+        genderPreference: 'any',
+        multipleChildren: false,
+      },
+      subjects: Array.isArray(subjects) ? subjects : [subjects],
+      languagePreference: ['English'],
+      tuitionType,
+      location: {
+        address: address || '',
+        city: city || '',
+        pincode: pincode || '000000',
+        coordinates: { latitude: 0, longitude: 0 },
+        teachingRadius: 5,
+      },
+      schedule: {
+        daysPerWeek: preferredDays?.length?.toString() || '3',
+        preferredTimings: preferredTimings || [],
+        startDate: new Date().toISOString().split('T')[0],
+      },
+      tutorPreferences: notes || '',
+      budget: {
+        minAmount: parseInt(budgetMin, 10) || 0,
+        maxAmount: parseInt(budgetMax, 10) || 0,
+        negotiationAllowed: true,
+      },
+    });
+
+    await requirement.save();
+
+    matchTutorsToRequirement(requirement._id).catch(err => {
+      console.error(`[Matching] Auto-match failed for ${requirementId}:`, err);
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Requirement posted successfully',
+      data: { requirementId, requirement },
+    });
+  } catch (error) {
+    console.error('Create requirement error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create requirement',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// ==========================================
 // DASHBOARD ROUTES
 // ==========================================
 app.get('/api/dashboard/parent', authenticateToken, async (req, res) => {
