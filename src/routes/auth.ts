@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import {
   sendOTP,
   verifyOTP,
+  continueWithoutOtp,
   getCurrentUser,
   updateProfile,
   logout,
@@ -103,6 +104,7 @@ const registerCompleteValidation = [
 // Routes
 router.post('/send-otp', sendOTPValidation, sendOTP);
 router.post('/verify-otp', verifyOTPValidation, verifyOTP);
+router.post('/continue-without-otp', continueWithoutOtp);
 router.post('/login', loginValidation, login);
 router.post('/signup', signupValidation, signup);
 router.post('/register-complete', registerCompleteValidation, registerComplete);

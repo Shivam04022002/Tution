@@ -75,6 +75,7 @@ import {
   getCreditsSummary,
   getAllTransactions,
 } from '../controllers/adminCreditsController';
+import { getSmtpConfig, updateSmtpConfig, testSmtpConfig } from '../controllers/smtpConfigController';
 import { authenticate, authorize } from '../middleware/auth';
 
 // Memory storage — no temp files on disk; xlsx reads from buffer
@@ -100,6 +101,11 @@ const router = express.Router();
 router.use(authenticate, authorize('admin'));
 
 router.get('/stats', getPlatformStats);
+
+// SMTP configuration
+router.get('/smtp-config', getSmtpConfig);
+router.put('/smtp-config', updateSmtpConfig);
+router.post('/smtp-config/test', testSmtpConfig);
 
 router.get('/users', getAllUsers);
 
