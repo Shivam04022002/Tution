@@ -473,6 +473,12 @@ const generateRequirementId = (): string => {
 
 // Complete Registration - Creates User + Profile in one call
 export const registerComplete = async (req: Request, res: Response) => {
+  // Tracks the User doc once created so we can roll it back if the
+  // subsequent profile save fails — these are two separate documents with
+  // no shared transaction, so without this a failed profile save would
+  // otherwise leave a User behind with no matching profile.
+  let createdUserId: any = null;
+
   try {
     const {
       role,
@@ -553,6 +559,7 @@ export const registerComplete = async (req: Request, res: Response) => {
     });
 
     await user.save();
+    createdUserId = user._id;
 
     let profileData: any = null;
 
@@ -814,11 +821,21 @@ export const registerComplete = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Complete registration error:', error);
 
+    // The User account was already committed before this failure — since
+    // profile creation failed, don't leave a account-with-no-profile behind.
+    if (createdUserId) {
+      try {
+        await User.findByIdAndDelete(createdUserId);
+      } catch (rollbackError) {
+        console.error('Failed to roll back partially-created user:', rollbackError);
+      }
+    }
+
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map((e: any) => e.message);
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
+        message: messages[0] || 'Validation failed',
         errors: messages,
       });
     }
