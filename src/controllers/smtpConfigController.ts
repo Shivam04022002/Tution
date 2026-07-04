@@ -93,7 +93,32 @@ export const updateSmtpConfig = async (req: AuthRequest, res: Response) => {
       username,
       password,
       services,
+      clear,
     } = req.body;
+
+    // Explicit "Clear Keys" + Save — wipe the saved config back to the
+    // unconfigured state instead of validating as a normal edit.
+    if (clear) {
+      await SmtpConfig.deleteMany({});
+      return res.status(200).json({
+        success: true,
+        message: 'SMTP configuration cleared',
+        data: {
+          isActive: false,
+          fromEmail: '',
+          fromName: '',
+          replyToEmail: '',
+          host: '',
+          port: 587,
+          encryption: 'STARTTLS',
+          authRequired: true,
+          username: '',
+          hasPassword: false,
+          services: DEFAULT_MAIL_SERVICES,
+          updatedAt: null,
+        },
+      });
+    }
 
     if (!fromEmail || !fromName || !host || !port) {
       return res.status(400).json({
