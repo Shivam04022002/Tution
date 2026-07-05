@@ -1,12 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
-import { geocodeAddress, reverseGeocode, searchPlaces, getPlaceDetails } from '../services/geocodingService';
+import { geocodeAddress, reverseGeocode, searchPlaces, getPlaceDetails, isLocationServiceEnabled } from '../services/geocodingService';
 import { validateLocationCoordinates, validateIndianPincode } from '../services/locationService';
 import { haversineDistance } from '../services/distanceService';
 
 const router = Router();
 
-router.get('/geocode', authenticate, async (req: Request, res: Response) => {
+// Public — checked by the signup/registration flow (no auth yet at that
+// point) to decide whether to show "Use my current location" + address
+// autocomplete, or fall back to plain manual address fields.
+router.get('/status', async (_req: Request, res: Response) => {
+  const enabled = await isLocationServiceEnabled();
+  return res.json({ success: true, data: { enabled } });
+});
+
+// These are intentionally not behind `authenticate` — the registration flow
+// that needs them runs before an account/token exists. The global API rate
+// limiter (see src/index.ts) still applies to prevent abuse.
+router.get('/geocode', async (req: Request, res: Response) => {
   const { address } = req.query;
 
   if (!address || typeof address !== 'string') {
@@ -21,7 +32,7 @@ router.get('/geocode', authenticate, async (req: Request, res: Response) => {
   return res.json({ success: true, data: result });
 });
 
-router.get('/reverse-geocode', authenticate, async (req: Request, res: Response) => {
+router.get('/reverse-geocode', async (req: Request, res: Response) => {
   const { lat, lng } = req.query;
 
   const latitude = parseFloat(lat as string);
@@ -40,7 +51,7 @@ router.get('/reverse-geocode', authenticate, async (req: Request, res: Response)
   return res.json({ success: true, data: result });
 });
 
-router.get('/places/search', authenticate, async (req: Request, res: Response) => {
+router.get('/places/search', async (req: Request, res: Response) => {
   const { query, lat, lng } = req.query;
 
   if (!query || typeof query !== 'string') {
@@ -54,7 +65,7 @@ router.get('/places/search', authenticate, async (req: Request, res: Response) =
   return res.json({ success: true, data: suggestions });
 });
 
-router.get('/places/details', authenticate, async (req: Request, res: Response) => {
+router.get('/places/details', async (req: Request, res: Response) => {
   const { placeId } = req.query;
 
   if (!placeId || typeof placeId !== 'string') {

@@ -76,6 +76,7 @@ import {
   getAllTransactions,
 } from '../controllers/adminCreditsController';
 import { getSmtpConfig, updateSmtpConfig, testSmtpConfig } from '../controllers/smtpConfigController';
+import { getLocationConfig, updateLocationConfig, testLocationConfig } from '../controllers/locationConfigController';
 import { authenticate, authorize } from '../middleware/auth';
 
 // Memory storage — no temp files on disk; xlsx reads from buffer
@@ -106,6 +107,11 @@ router.get('/stats', getPlatformStats);
 router.get('/smtp-config', getSmtpConfig);
 router.put('/smtp-config', updateSmtpConfig);
 router.post('/smtp-config/test', testSmtpConfig);
+
+// Location services configuration
+router.get('/location-config', getLocationConfig);
+router.put('/location-config', updateLocationConfig);
+router.post('/location-config/test', testLocationConfig);
 
 router.get('/users', getAllUsers);
 

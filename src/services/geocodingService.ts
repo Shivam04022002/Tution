@@ -1,4 +1,6 @@
 import https from 'https';
+import { LocationConfig } from '../models/LocationConfig';
+import { decrypt } from '../utils/encryption';
 
 export interface GeocodingResult {
   latitude: number;
@@ -19,7 +21,50 @@ export interface ReverseGeocodingResult {
   neighborhood?: string;
 }
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+// Admin-configured key (DB) takes priority; falls back to the server's own
+// GOOGLE_MAPS_API_KEY env var if no admin config has been saved yet.
+async function getApiKey(): Promise<string> {
+  const config = await LocationConfig.findOne();
+  if (config?.isActive && config.apiKeyEncrypted) {
+    try {
+      return decrypt(config.apiKeyEncrypted);
+    } catch (err) {
+      console.error('[GeocodingService] Failed to decrypt stored API key:', err);
+    }
+  }
+  return process.env.GOOGLE_MAPS_API_KEY || '';
+}
+
+// Whether the admin has turned location services on (used to gate
+// "Use my current location" / address autocomplete on the client).
+export async function isLocationServiceEnabled(): Promise<boolean> {
+  const config = await LocationConfig.findOne();
+  return !!(config?.isActive && config.apiKeyEncrypted);
+}
+
+// Tests a specific key directly (bypassing DB/env resolution) — used by the
+// admin "Send Test" action so unsaved key edits can be verified before Save.
+export async function testApiKey(apiKey: string): Promise<GeocodingResult | null> {
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent('India Gate, New Delhi, India')}&key=${apiKey}&region=in`;
+  try {
+    const body = await httpGet(url);
+    const data = JSON.parse(body);
+    if (data.status !== 'OK' || !data.results?.length) return null;
+    const result = data.results[0];
+    return {
+      latitude: result.geometry.location.lat,
+      longitude: result.geometry.location.lng,
+      formattedAddress: result.formatted_address,
+      city: '',
+      pincode: '',
+      state: '',
+      country: '',
+    };
+  } catch (err) {
+    console.error('[GeocodingService] testApiKey error:', err);
+    return null;
+  }
+}
 
 function httpGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -42,13 +87,14 @@ function extractAddressComponent(
 }
 
 export async function geocodeAddress(address: string): Promise<GeocodingResult | null> {
-  if (!GOOGLE_MAPS_API_KEY) {
-    console.warn('[GeocodingService] GOOGLE_MAPS_API_KEY not set; returning null');
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    console.warn('[GeocodingService] No Google Maps API key configured; returning null');
     return null;
   }
 
   const encoded = encodeURIComponent(address);
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encoded}&key=${GOOGLE_MAPS_API_KEY}&region=in`;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encoded}&key=${apiKey}&region=in`;
 
   try {
     const body = await httpGet(url);
@@ -83,12 +129,13 @@ export async function reverseGeocode(
   latitude: number,
   longitude: number
 ): Promise<ReverseGeocodingResult | null> {
-  if (!GOOGLE_MAPS_API_KEY) {
-    console.warn('[GeocodingService] GOOGLE_MAPS_API_KEY not set; returning null');
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    console.warn('[GeocodingService] No Google Maps API key configured; returning null');
     return null;
   }
 
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}&region=in`;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}&region=in`;
 
   try {
     const body = await httpGet(url);
@@ -128,9 +175,10 @@ export async function searchPlaces(
   latitude?: number,
   longitude?: number
 ): Promise<Array<{ placeId: string; description: string; mainText: string; secondaryText: string }>> {
-  if (!GOOGLE_MAPS_API_KEY) return [];
+  const apiKey = await getApiKey();
+  if (!apiKey) return [];
 
-  let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}&components=country:in&types=geocode`;
+  let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}&components=country:in&types=geocode`;
 
   if (latitude && longitude) {
     url += `&location=${latitude},${longitude}&radius=50000`;
@@ -157,9 +205,10 @@ export async function searchPlaces(
 export async function getPlaceDetails(
   placeId: string
 ): Promise<GeocodingResult | null> {
-  if (!GOOGLE_MAPS_API_KEY) return null;
+  const apiKey = await getApiKey();
+  if (!apiKey) return null;
 
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address,address_component&key=${GOOGLE_MAPS_API_KEY}`;
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address,address_component&key=${apiKey}`;
 
   try {
     const body = await httpGet(url);

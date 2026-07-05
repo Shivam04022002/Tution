@@ -736,7 +736,10 @@ export const registerComplete = async (req: Request, res: Response) => {
           address: personalDetails?.address || '',
           city: personalDetails?.city || '',
           pincode: personalDetails?.pincode || '',
-          coordinates: { latitude: 0, longitude: 0 },
+          coordinates: {
+            latitude: typeof personalDetails?.latitude === 'number' ? personalDetails.latitude : 0,
+            longitude: typeof personalDetails?.longitude === 'number' ? personalDetails.longitude : 0,
+          },
           preferredAreas: locationPreferences || [],
           teachingRadius: 10,
           availableDays: availability?.days || [],
