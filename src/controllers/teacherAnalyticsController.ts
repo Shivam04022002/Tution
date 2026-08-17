@@ -63,14 +63,10 @@ export const getTeacherAnalytics = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Get teacher profile
-    const teacherProfile = await TeacherProfile.findOne({ userId: teacherId, isActive: true });
-    if (!teacherProfile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Teacher profile not found',
-      });
-    }
+    // No teacher-profile lookup here: every aggregation below keys off
+    // `teacherId` (the User id), and the profile was never read. It only acted
+    // as a gate that 404'd analytics for teachers who hadn't finished
+    // onboarding, instead of reporting their genuine zero counts.
 
     // Parallel aggregation queries for KPIs
     const [
@@ -931,14 +927,11 @@ export const getTeacherEarningsAnalytics = async (req: AuthRequest, res: Respons
       });
     }
 
-    // Get teacher profile
+    // Profile is optional: a teacher without one has genuinely zero earnings,
+    // which is a valid zero-state rather than a 404. `stats.leadUnlocks` below
+    // is read defensively so the ratios fall back to 0.
     const teacherProfile = await TeacherProfile.findOne({ userId: teacherId, isActive: true });
-    if (!teacherProfile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Teacher profile not found',
-      });
-    }
+    const leadUnlocks = teacherProfile?.stats?.leadUnlocks || 0;
 
     // Parallel aggregation queries for earnings data
     const [
@@ -1133,8 +1126,8 @@ export const getTeacherEarningsAnalytics = async (req: AuthRequest, res: Respons
       averageFeePerStudent: 0,
     };
 
-    const leadToApplicationRate = teacherProfile.stats.leadUnlocks > 0 
-      ? (conversionData.totalApplications / teacherProfile.stats.leadUnlocks) * 100 
+    const leadToApplicationRate = leadUnlocks > 0
+      ? (conversionData.totalApplications / leadUnlocks) * 100
       : 0;
 
     const applicationToShortlistRate = conversionData.totalApplications > 0
@@ -1149,8 +1142,8 @@ export const getTeacherEarningsAnalytics = async (req: AuthRequest, res: Respons
       ? (conversionData.acceptedApplications / conversionData.demoScheduled) * 100
       : 0;
 
-    const overallConversionRate = teacherProfile.stats.leadUnlocks > 0
-      ? (conversionData.acceptedApplications / teacherProfile.stats.leadUnlocks) * 100
+    const overallConversionRate = leadUnlocks > 0
+      ? (conversionData.acceptedApplications / leadUnlocks) * 100
       : 0;
 
     // Calculate estimated earnings projections
@@ -1172,7 +1165,7 @@ export const getTeacherEarningsAnalytics = async (req: AuthRequest, res: Respons
       data: {
         period,
         kpis: {
-          leadsGenerated: teacherProfile.stats.leadUnlocks,
+          leadsGenerated: leadUnlocks,
           applicationsSubmitted: conversionData.totalApplications,
           shortlisted: conversionData.shortlistedApplications,
           demoScheduled: conversionData.demoScheduled,

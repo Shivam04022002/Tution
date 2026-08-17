@@ -731,8 +731,36 @@ export const getProfileCompletion = async (req: AuthRequest, res: Response) => {
 
     const profile = await TeacherProfile.findOne({ userId }).lean();
 
+    // No profile yet = onboarding not started. That is exactly the case this
+    // endpoint exists to report, so answer 0% rather than 404.
     if (!profile) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      const emptySections = {
+        basicDetails: false,
+        profilePhoto: false,
+        education: false,
+        subjects: false,
+        classes: false,
+        boards: false,
+        teachingModes: false,
+        location: false,
+        availability: false,
+        discoverability: false,
+        pricing: false,
+        documents: false,
+      };
+      return res.status(200).json({
+        success: true,
+        data: {
+          percentage: 0,
+          completedCount: 0,
+          totalCount: Object.keys(emptySections).length,
+          sections: emptySections,
+          canApply: false,
+          verificationStatus: 'pending',
+          isVerified: false,
+          hasProfile: false,
+        },
+      });
     }
 
     const sections = {
@@ -1083,8 +1111,20 @@ export const getAvailability = async (req: AuthRequest, res: Response) => {
     const profile = await TeacherProfile.findOne({ userId })
       .select('locationAvailability');
 
+    // Onboarding not started — hand back a blank-but-valid availability object
+    // so the editor renders its default state instead of failing to load.
     if (!profile) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      return res.status(200).json({
+        success: true,
+        data: {
+          city: '',
+          address: '',
+          pincode: '',
+          availableDays: [],
+          customTimeSlots: [],
+          weeklySchedule: {},
+        },
+      });
     }
 
     return res.status(200).json({
@@ -1173,8 +1213,20 @@ export const getDiscoverability = async (req: AuthRequest, res: Response) => {
     const profile = await TeacherProfile.findOne({ userId })
       .select('discoverability');
 
+    // Onboarding not started — return discoverability defaults (all off) so the
+    // Availability screen, which loads availability + discoverability +
+    // eligibility together in one Promise.all, still renders.
     if (!profile) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      return res.status(200).json({
+        success: true,
+        data: {
+          availableForNewStudents: false,
+          visibleInMarketplace: false,
+          onlineStatus: 'offline',
+          travelSettings: {},
+          locationCoverage: { city: '', state: '', areas: [], pincodes: [] },
+        },
+      });
     }
 
     return res.status(200).json({
@@ -1252,11 +1304,24 @@ export const getMatchingEligibility = async (req: AuthRequest, res: Response) =>
     const profile = await TeacherProfile.findOne({ userId })
       .select('profileCompletionPercentage verificationStatus discoverability locationAvailability');
 
+    // Onboarding not started — the teacher is simply not yet eligible. Report
+    // that truthfully instead of 404ing the Availability screen.
     if (!profile) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+      return res.status(200).json({
+        success: true,
+        data: {
+          isEligible: false,
+          profileCompletionPercentage: 0,
+          verificationStatus: 'pending',
+          visibleInMarketplace: false,
+          availableForNewStudents: false,
+          hasActiveDays: false,
+          hasTimeSlots: false,
+        },
+      });
     }
 
-    const isEligible = 
+    const isEligible =
       (profile.profileCompletionPercentage || 0) >= 70 &&
       profile.verificationStatus !== 'rejected' &&
       profile.discoverability?.visibleInMarketplace === true &&
@@ -1383,10 +1448,11 @@ export const getAvailableRequirements = async (req: AuthRequest, res: Response) 
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const teacher = await TeacherProfile.findOne({ userId }).lean();
-    if (!teacher) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-    }
+    // A teacher who hasn't finished onboarding can still browse the lead
+    // marketplace — they simply score low against each lead. calcOnTheFlyScore
+    // reads every profile field optionally, so an empty object degrades the
+    // score instead of throwing. Returning 404 hid the whole lead list.
+    const teacher = (await TeacherProfile.findOne({ userId }).lean()) ?? ({} as any);
 
     const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 15));
@@ -1715,10 +1781,8 @@ export const getRequirementById = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const teacher = await TeacherProfile.findOne({ userId }).lean();
-    if (!teacher) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-    }
+    // See getAvailableRequirements — no profile yet is a valid browsing state.
+    const teacher = (await TeacherProfile.findOne({ userId }).lean()) ?? ({} as any);
 
     const id = req.params.id as string;
     const requirement = await ParentRequirement.findOne({
@@ -1774,10 +1838,8 @@ export const getRecommendedRequirements = async (req: AuthRequest, res: Response
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const teacher = await TeacherProfile.findOne({ userId }).lean();
-    if (!teacher) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-    }
+    // See getAvailableRequirements — no profile yet is a valid browsing state.
+    const teacher = (await TeacherProfile.findOne({ userId }).lean()) ?? ({} as any);
 
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string) || 10));
 

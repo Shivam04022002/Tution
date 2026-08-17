@@ -139,15 +139,12 @@ export const getTeacherDashboard = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Get teacher profile for stats
+    // Get teacher profile for stats. A teacher who has signed up but not yet
+    // completed onboarding has no TeacherProfile — that is a valid state, not
+    // an error. Returning 404 here broke the entire dashboard (all Quick Stats
+    // plus the "Complete Your Profile" prompt that exists precisely for this
+    // case), so fall through with a null profile and report zeroed stats.
     const teacherProfile = await TeacherProfile.findOne({ userId: teacherId });
-
-    if (!teacherProfile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Teacher profile not found',
-      });
-    }
 
     // Fetch all data in parallel
     const [
@@ -210,19 +207,24 @@ export const getTeacherDashboard = async (req: AuthRequest, res: Response) => {
         .sort({ 'schedule.startDate': -1 }),
     ]);
 
-    // Calculate real profile completion
-    const profileCompletion = calculateTeacherProfileCompletion(teacherProfile);
+    // Calculate real profile completion (0% when onboarding hasn't started)
+    const profileCompletion = teacherProfile
+      ? calculateTeacherProfileCompletion(teacherProfile)
+      : 0;
 
     return res.status(200).json({
       success: true,
       data: {
+        // `hasProfile: false` lets the client tell "no profile yet" apart from
+        // "profile exists but everything is genuinely zero".
+        hasProfile: !!teacherProfile,
         stats: {
-          activeStudents: teacherProfile.stats?.activeStudents || 0,
-          totalStudents: teacherProfile.stats?.totalStudents || 0,
-          totalEarnings: teacherProfile.stats?.totalEarnings || 0,
-          averageRating: teacherProfile.stats?.averageRating || 0,
+          activeStudents: teacherProfile?.stats?.activeStudents || 0,
+          totalStudents: teacherProfile?.stats?.totalStudents || 0,
+          totalEarnings: teacherProfile?.stats?.totalEarnings || 0,
+          averageRating: teacherProfile?.stats?.averageRating || 0,
           profileCompletion,
-          verificationStatus: teacherProfile.verificationStatus || 'pending',
+          verificationStatus: teacherProfile?.verificationStatus || 'pending',
           tuitionRequestsAvailable: matches.length,
           applicationsSent: applications.length,
         },

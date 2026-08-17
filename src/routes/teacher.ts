@@ -115,14 +115,6 @@ router.get('/filter/options', getFilterOptions);
 router.get('/subjects', getSubjects);
 router.get('/classes', getClasses);
 
-// Dynamic tutor routes
-router.get('/:id', getTeacherById);
-router.get('/:id/gallery', getTeacherGallery);
-router.get('/:id/stats', getTeacherStats);
-router.get('/:id/reviews', optionalAuth, getTutorReviews);
-router.get('/:id/ratings', optionalAuth, getTutorRatings);
-router.post('/:id/reviews', authenticate, authorize('parent'), createReview);
-
 // Protected routes - Teacher only
 router.post(
   '/register',
@@ -185,5 +177,20 @@ router.get('/analytics/funnel', authenticate, authorize('teacher'), getTeacherFu
 router.get('/analytics/trends', authenticate, authorize('teacher'), getTeacherTrendsAnalytics);
 router.get('/analytics/performance', authenticate, authorize('teacher'), getTeacherPerformanceAnalytics);
 router.get('/earnings', authenticate, authorize('teacher'), getTeacherEarningsAnalytics);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic tutor routes — MUST stay last.
+// `/:id` matches any single segment, so registering it above the static teacher
+// routes above (/completion, /availability, /analytics, /earnings,
+// /requirements, /preferences, /discoverability, /matching-eligibility) made
+// Express route them to getTeacherById, which failed casting the path segment
+// to an ObjectId and returned 500. Keep all new static routes ABOVE this block.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id', getTeacherById);
+router.get('/:id/gallery', getTeacherGallery);
+router.get('/:id/stats', getTeacherStats);
+router.get('/:id/reviews', optionalAuth, getTutorReviews);
+router.get('/:id/ratings', optionalAuth, getTutorRatings);
+router.post('/:id/reviews', authenticate, authorize('parent'), createReview);
 
 export default router;
