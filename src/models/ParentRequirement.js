@@ -65,11 +65,13 @@ const parentRequirementSchema = new mongoose.Schema({
   location: {
     address: {
       type: String,
-      required: true,
+      required: false,
+      default: '',
     },
     city: {
       type: String,
-      required: true,
+      required: false,
+      default: '',
     },
     pincode: {
       type: String,
@@ -110,6 +112,10 @@ const parentRequirementSchema = new mongoose.Schema({
       type: String,
       required: true,
     },
+  },
+  tutorPreferences: {
+    type: String,
+    default: '',
   },
   budget: {
     minAmount: {

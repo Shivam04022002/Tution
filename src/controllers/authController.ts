@@ -5,6 +5,7 @@ import { User } from '../models/User';
 import { ParentRequirement } from '../models/ParentRequirement';
 import { TeacherProfile } from '../models/TeacherProfile';
 import { AuthRequest } from '../middleware/auth';
+import { isMailServiceEnabled } from '../services/emailService';
 
 // Generate JWT Token (standardized to use only userId)
 const generateToken = (userId: string): string => {
@@ -27,7 +28,19 @@ export const sendOTP = async (req: Request, res: Response): Promise<Response> =>
 
     // Check if user already exists
     const existingUser = await User.findOne({ phoneNumber });
-    
+
+    // If the 'otp_verification' mail service is off (or SMTP isn't configured
+    // at all), tell the client up front instead of pretending an OTP went out.
+    const mailServiceUp = await isMailServiceEnabled('otp_verification');
+    if (!mailServiceUp) {
+      return res.status(200).json({
+        success: true,
+        mailServiceDown: true,
+        message: 'Mail services are down for a while',
+        userExists: !!existingUser,
+      });
+    }
+
     // Send OTP via Firebase (simulated for demo)
     // In production, you would use Firebase Auth to send OTP
     try {
@@ -179,6 +192,88 @@ export const verifyOTP = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to verify OTP',
+    });
+  }
+};
+
+// Login/register without an OTP — only allowed while the 'otp_verification'
+// mail service is actually down server-side (re-checked here, never trusted
+// from the client), used by the "Continue without OTP" fallback shown when
+// sendOTP responds with mailServiceDown: true.
+export const continueWithoutOtp = async (req: Request, res: Response) => {
+  try {
+    const { phoneNumber, role } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' });
+    }
+
+    const mailServiceUp = await isMailServiceEnabled('otp_verification');
+    if (mailServiceUp) {
+      return res.status(403).json({
+        success: false,
+        message: 'Mail services are available — please verify with OTP.',
+      });
+    }
+
+    // Deterministic per-phone id so repeat attempts reuse the same user
+    // instead of creating a new one each time (mirrors the mock Firebase uid
+    // pattern already used when Firebase itself is unavailable).
+    const bypassUid = `bypass_${phoneNumber.replace(/\D/g, '')}`;
+
+    let user = await User.findOne({ firebaseUid: bypassUid });
+
+    if (!user) {
+      if (!role) {
+        return res.status(400).json({
+          success: false,
+          message: 'Role is required for new users. Please specify parent or teacher.',
+        });
+      }
+
+      if (!['parent', 'teacher'].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid role. Only parent and teacher roles can be created via OTP.',
+        });
+      }
+
+      user = new User({
+        firebaseUid: bypassUid,
+        phoneNumber,
+        email: `${phoneNumber}@tuition.app`, // Placeholder email
+        role,
+        profile: {
+          firstName: '',
+          lastName: '',
+        },
+      });
+
+      await user.save();
+    }
+
+    const token = generateToken(user._id.toString());
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id,
+        firebaseUid: user.firebaseUid,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+        profile: user.profile,
+        profileCompleted: user.profileCompleted,
+        onboardingCompleted: user.onboardingCompleted,
+      },
+    });
+  } catch (error: any) {
+    console.error('Continue without OTP error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to continue without OTP',
     });
   }
 };
@@ -378,6 +473,12 @@ const generateRequirementId = (): string => {
 
 // Complete Registration - Creates User + Profile in one call
 export const registerComplete = async (req: Request, res: Response) => {
+  // Tracks the User doc once created so we can roll it back if the
+  // subsequent profile save fails — these are two separate documents with
+  // no shared transaction, so without this a failed profile save would
+  // otherwise leave a User behind with no matching profile.
+  let createdUserId: any = null;
+
   try {
     const {
       role,
@@ -458,6 +559,7 @@ export const registerComplete = async (req: Request, res: Response) => {
     });
 
     await user.save();
+    createdUserId = user._id;
 
     let profileData: any = null;
 
@@ -634,7 +736,10 @@ export const registerComplete = async (req: Request, res: Response) => {
           address: personalDetails?.address || '',
           city: personalDetails?.city || '',
           pincode: personalDetails?.pincode || '',
-          coordinates: { latitude: 0, longitude: 0 },
+          coordinates: {
+            latitude: typeof personalDetails?.latitude === 'number' ? personalDetails.latitude : 0,
+            longitude: typeof personalDetails?.longitude === 'number' ? personalDetails.longitude : 0,
+          },
           preferredAreas: locationPreferences || [],
           teachingRadius: 10,
           availableDays: availability?.days || [],
@@ -719,11 +824,21 @@ export const registerComplete = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Complete registration error:', error);
 
+    // The User account was already committed before this failure — since
+    // profile creation failed, don't leave a account-with-no-profile behind.
+    if (createdUserId) {
+      try {
+        await User.findByIdAndDelete(createdUserId);
+      } catch (rollbackError) {
+        console.error('Failed to roll back partially-created user:', rollbackError);
+      }
+    }
+
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map((e: any) => e.message);
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
+        message: messages[0] || 'Validation failed',
         errors: messages,
       });
     }
