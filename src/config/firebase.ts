@@ -2,15 +2,57 @@ import admin from 'firebase-admin';
 
 let firebaseApp: admin.app.App | null = null;
 
+/**
+ * `.env.example` ships placeholder values such as "your-firebase-project-id".
+ * Those are truthy, so a plain presence check silently accepts them and the
+ * failure only surfaces later as an opaque credential error. Reject them here.
+ */
+const isPlaceholder = (value?: string): boolean =>
+  !value ||
+  value.trim().length === 0 ||
+  /^your[-_]/i.test(value.trim()) ||
+  /^(placeholder|changeme|todo|xxx)$/i.test(value.trim());
+
+/** Why initialization did not happen. Never contains any credential material. */
+let lastSkipReason: string | null = null;
+
 export const initializeFirebase = (): void => {
+  // Idempotent: repeated calls (e.g. a legacy entrypoint delegating here) must
+  // not attempt a second admin.initializeApp().
+  if (firebaseApp) {
+    return;
+  }
+
   try {
     // Check if Firebase credentials are available
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 
-    if (!projectId || !privateKey || !clientEmail) {
-      console.warn('⚠️ Firebase credentials not found. Firebase features will be disabled.');
+    if (isPlaceholder(projectId) || isPlaceholder(clientEmail) || !privateKey) {
+      const missing = [
+        isPlaceholder(projectId) ? 'FIREBASE_PROJECT_ID' : null,
+        isPlaceholder(clientEmail) ? 'FIREBASE_CLIENT_EMAIL' : null,
+        !privateKey ? 'FIREBASE_PRIVATE_KEY' : null,
+      ].filter(Boolean);
+
+      lastSkipReason = `missing or placeholder: ${missing.join(', ')}`;
+      console.warn(
+        `⚠️ Firebase credentials not configured (${missing.join(', ')}). ` +
+          'Push notifications will be skipped; in-app notifications still work.',
+      );
+      return;
+    }
+
+    // A real service-account key is a PEM block. Detecting this here avoids a
+    // confusing downstream error from admin.credential.cert().
+    if (!privateKey.includes('BEGIN PRIVATE KEY') || !privateKey.includes('END PRIVATE KEY')) {
+      lastSkipReason = 'FIREBASE_PRIVATE_KEY is not a well-formed PEM block';
+      console.warn(
+        '⚠️ FIREBASE_PRIVATE_KEY is not a PEM private key (expected a ' +
+          '"-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----" block, with literal \\n ' +
+          'escapes if stored on one line). Push notifications will be skipped.',
+      );
       return;
     }
 
@@ -28,13 +70,16 @@ export const initializeFirebase = (): void => {
       credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
     });
 
+    lastSkipReason = null;
     console.log('✅ Firebase Admin initialized successfully');
   } catch (error: any) {
     if (error.code === 'app/duplicate-app') {
       console.log('✅ Firebase Admin already initialized');
       firebaseApp = admin.app();
     } else {
-      console.error('❌ Failed to initialize Firebase:', error);
+      // Log the error CODE/message only — never the credential payload.
+      lastSkipReason = `firebase-admin rejected the credential: ${error?.code ?? error?.message ?? 'unknown'}`;
+      console.error(`❌ Failed to initialize Firebase: ${error?.code ?? error?.message ?? 'unknown error'}`);
       // Don't throw error, allow app to run without Firebase
     }
   }
@@ -52,6 +97,61 @@ export const getFirestore = () => {
     throw new Error('Firebase not initialized. Please check your environment variables.');
   }
   return admin.firestore();
+};
+
+/** True when Firebase Admin holds usable credentials. */
+export const isFirebaseReady = (): boolean => firebaseApp !== null;
+
+export interface FirebaseDiagnostics {
+  configured: boolean;
+  projectId: string | null;
+  /** Presence only — the address itself is an identifier, never the key. */
+  clientEmail: 'configured' | 'missing';
+  privateKey: 'configured' | 'missing';
+  reason?: string;
+}
+
+/**
+ * Safe startup diagnostic.
+ *
+ * Reports only presence flags plus the project id (a public identifier).
+ * It never returns or logs the private key, the service-account JSON, or an
+ * access token.
+ */
+export const getFirebaseDiagnostics = (): FirebaseDiagnostics => {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  return {
+    configured: firebaseApp !== null,
+    projectId: isPlaceholder(projectId) ? null : projectId!,
+    clientEmail: isPlaceholder(clientEmail) ? 'missing' : 'configured',
+    privateKey: privateKey && privateKey.trim().length > 0 ? 'configured' : 'missing',
+    ...(firebaseApp === null && lastSkipReason ? { reason: lastSkipReason } : {}),
+  };
+};
+
+/** Print the diagnostic block. Safe to call on every boot. */
+export const logFirebaseDiagnostics = (): void => {
+  const d = getFirebaseDiagnostics();
+  console.log('Firebase:');
+  console.log(`  configured:  ${d.configured}`);
+  console.log(`  projectId:   ${d.projectId ?? 'not set'}`);
+  console.log(`  clientEmail: ${d.clientEmail}`);
+  console.log(`  privateKey:  ${d.privateKey}`);
+  if (d.reason) console.log(`  reason:      ${d.reason}`);
+};
+
+/**
+ * Firebase Cloud Messaging handle, or null when Firebase is not configured.
+ * Returning null (rather than throwing) lets the push layer degrade quietly —
+ * a missing credential must never break the business operation that triggered
+ * the notification.
+ */
+export const getMessaging = (): admin.messaging.Messaging | null => {
+  if (!firebaseApp) return null;
+  return admin.messaging();
 };
 
 // For backward compatibility

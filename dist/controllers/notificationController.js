@@ -3,9 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.bulkDeleteOld = exports.deleteNotification = exports.markAllAsRead = exports.markAsRead = exports.getUnreadCount = exports.listNotifications = void 0;
+exports.unregisterDeviceTokenHandler = exports.registerDeviceTokenHandler = exports.bulkDeleteOld = exports.deleteNotification = exports.markAllAsRead = exports.markAsRead = exports.getUnreadCount = exports.listNotifications = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const Notification_1 = require("../models/Notification");
+const pushService_1 = require("../services/pushService");
 const listNotifications = async (req, res) => {
     try {
         if (!req.user)
@@ -136,4 +137,66 @@ const bulkDeleteOld = async (req, res) => {
     }
 };
 exports.bulkDeleteOld = bulkDeleteOld;
+const registerDeviceTokenHandler = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        const { token, platform, deviceId, appVersion } = req.body ?? {};
+        if (!token || typeof token !== 'string') {
+            return res.status(400).json({ success: false, message: 'A device token is required' });
+        }
+        if (platform && !['android', 'ios', 'web'].includes(platform)) {
+            return res.status(400).json({ success: false, message: 'Invalid platform' });
+        }
+        const record = await (0, pushService_1.registerDeviceToken)({
+            userId,
+            token,
+            platform,
+            deviceId,
+            appVersion,
+        });
+        return res.status(200).json({
+            success: true,
+            message: 'Device registered for notifications',
+            data: {
+                platform: record.platform,
+                isActive: record.isActive,
+                lastSeenAt: record.lastSeenAt,
+                pushEnabled: (0, pushService_1.isPushEnabled)(),
+            },
+        });
+    }
+    catch (error) {
+        console.error('Register device token error:', error?.message ?? error);
+        return res.status(400).json({
+            success: false,
+            message: error?.message || 'Failed to register device token',
+        });
+    }
+};
+exports.registerDeviceTokenHandler = registerDeviceTokenHandler;
+const unregisterDeviceTokenHandler = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        const token = (req.body?.token ?? req.query?.token);
+        if (!token || typeof token !== 'string') {
+            return res.status(400).json({ success: false, message: 'A device token is required' });
+        }
+        const removed = await (0, pushService_1.deactivateDeviceToken)(userId, token);
+        return res.status(200).json({
+            success: true,
+            message: removed ? 'Device unregistered' : 'No matching device token for this account',
+        });
+    }
+    catch (error) {
+        console.error('Unregister device token error:', error?.message ?? error);
+        return res.status(500).json({ success: false, message: 'Failed to unregister device token' });
+    }
+};
+exports.unregisterDeviceTokenHandler = unregisterDeviceTokenHandler;
 //# sourceMappingURL=notificationController.js.map

@@ -88,6 +88,7 @@ const registerCompleteValidation = [
 ];
 router.post('/send-otp', sendOTPValidation, authController_1.sendOTP);
 router.post('/verify-otp', verifyOTPValidation, authController_1.verifyOTP);
+router.post('/continue-without-otp', authController_1.continueWithoutOtp);
 router.post('/login', loginValidation, authController_1.login);
 router.post('/signup', signupValidation, authController_1.signup);
 router.post('/register-complete', registerCompleteValidation, authController_1.registerComplete);

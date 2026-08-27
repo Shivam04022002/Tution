@@ -4,10 +4,10 @@ export interface IParentRequirement extends Document {
     requirementId: string;
     studentDetails: {
         studentName: string;
-        age: number;
+        age?: number;
         grade: string;
         board: string;
-        schoolName: string;
+        schoolName?: string;
         genderPreference: 'any' | 'male' | 'female';
         multipleChildren: boolean;
         children?: Array<{
@@ -22,12 +22,16 @@ export interface IParentRequirement extends Document {
     languagePreference: string[];
     tuitionType: 'home' | 'online' | 'group' | 'crash';
     location: {
-        address: string;
-        city: string;
+        address?: string;
+        city?: string;
         pincode: string;
         coordinates: {
             latitude: number;
             longitude: number;
+        };
+        geoPoint?: {
+            type: 'Point';
+            coordinates: [number, number];
         };
         teachingRadius: number;
     };
@@ -42,7 +46,7 @@ export interface IParentRequirement extends Document {
         maxAmount: number;
         negotiationAllowed: boolean;
     };
-    status: 'draft' | 'published' | 'receiving_applications' | 'shortlisted' | 'demo_scheduled' | 'teacher_selected' | 'hired' | 'closed' | 'cancelled' | 'expired' | 'paused';
+    status: 'draft' | 'active' | 'published' | 'receiving_applications' | 'shortlisted' | 'demo_scheduled' | 'teacher_selected' | 'hired' | 'closed' | 'cancelled' | 'expired' | 'paused';
     priority: 'low' | 'medium' | 'high' | 'urgent';
     matchedTutors: Array<{
         tutorId: mongoose.Types.ObjectId;

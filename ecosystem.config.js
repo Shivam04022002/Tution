@@ -16,7 +16,19 @@ module.exports = {
   apps: [
     {
       name: 'tuition-api',
-      script: './server.js',
+      // Production runs the COMPILED TypeScript application (src/index.ts ->
+      // dist/index.js). That is the only entrypoint that mounts the full API
+      // router (src/routes/index.ts) and performs real Firebase Admin
+      // initialization via src/config/firebase.ts.
+      //
+      // Do not point this at ./server.js: that legacy entrypoint defines only
+      // 33 hand-written routes, omits ~70 endpoints the mobile app calls
+      // (/kyc, /contact, /credits, /unlock, /subscriptions, /teachers/filter,
+      // /notifications/device-token, ...), and cannot initialize firebase-admin.
+      script: './dist/index.js',
+      // Anchor to this file's directory so `pm2 start` from any cwd resolves
+      // ./dist and .env consistently.
+      cwd: __dirname,
       instances: 1, // Single instance for fork mode
       exec_mode: 'fork', // Fork mode for simpler deployment
       

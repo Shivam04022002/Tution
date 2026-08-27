@@ -3,16 +3,38 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.firestore = exports.auth = exports.getFirestore = exports.getAuth = exports.initializeFirebase = void 0;
+exports.firestore = exports.auth = exports.getMessaging = exports.logFirebaseDiagnostics = exports.getFirebaseDiagnostics = exports.isFirebaseReady = exports.getFirestore = exports.getAuth = exports.initializeFirebase = void 0;
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
 let firebaseApp = null;
+const isPlaceholder = (value) => !value ||
+    value.trim().length === 0 ||
+    /^your[-_]/i.test(value.trim()) ||
+    /^(placeholder|changeme|todo|xxx)$/i.test(value.trim());
+let lastSkipReason = null;
 const initializeFirebase = () => {
+    if (firebaseApp) {
+        return;
+    }
     try {
         const projectId = process.env.FIREBASE_PROJECT_ID;
         const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
         const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        if (!projectId || !privateKey || !clientEmail) {
-            console.warn('⚠️ Firebase credentials not found. Firebase features will be disabled.');
+        if (isPlaceholder(projectId) || isPlaceholder(clientEmail) || !privateKey) {
+            const missing = [
+                isPlaceholder(projectId) ? 'FIREBASE_PROJECT_ID' : null,
+                isPlaceholder(clientEmail) ? 'FIREBASE_CLIENT_EMAIL' : null,
+                !privateKey ? 'FIREBASE_PRIVATE_KEY' : null,
+            ].filter(Boolean);
+            lastSkipReason = `missing or placeholder: ${missing.join(', ')}`;
+            console.warn(`⚠️ Firebase credentials not configured (${missing.join(', ')}). ` +
+                'Push notifications will be skipped; in-app notifications still work.');
+            return;
+        }
+        if (!privateKey.includes('BEGIN PRIVATE KEY') || !privateKey.includes('END PRIVATE KEY')) {
+            lastSkipReason = 'FIREBASE_PRIVATE_KEY is not a well-formed PEM block';
+            console.warn('⚠️ FIREBASE_PRIVATE_KEY is not a PEM private key (expected a ' +
+                '"-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----" block, with literal \\n ' +
+                'escapes if stored on one line). Push notifications will be skipped.');
             return;
         }
         const serviceAccount = {
@@ -27,6 +49,7 @@ const initializeFirebase = () => {
         firebaseApp = firebase_admin_1.default.initializeApp({
             credential: firebase_admin_1.default.credential.cert(serviceAccount),
         });
+        lastSkipReason = null;
         console.log('✅ Firebase Admin initialized successfully');
     }
     catch (error) {
@@ -35,7 +58,8 @@ const initializeFirebase = () => {
             firebaseApp = firebase_admin_1.default.app();
         }
         else {
-            console.error('❌ Failed to initialize Firebase:', error);
+            lastSkipReason = `firebase-admin rejected the credential: ${error?.code ?? error?.message ?? 'unknown'}`;
+            console.error(`❌ Failed to initialize Firebase: ${error?.code ?? error?.message ?? 'unknown error'}`);
         }
     }
 };
@@ -54,6 +78,38 @@ const getFirestore = () => {
     return firebase_admin_1.default.firestore();
 };
 exports.getFirestore = getFirestore;
+const isFirebaseReady = () => firebaseApp !== null;
+exports.isFirebaseReady = isFirebaseReady;
+const getFirebaseDiagnostics = () => {
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    return {
+        configured: firebaseApp !== null,
+        projectId: isPlaceholder(projectId) ? null : projectId,
+        clientEmail: isPlaceholder(clientEmail) ? 'missing' : 'configured',
+        privateKey: privateKey && privateKey.trim().length > 0 ? 'configured' : 'missing',
+        ...(firebaseApp === null && lastSkipReason ? { reason: lastSkipReason } : {}),
+    };
+};
+exports.getFirebaseDiagnostics = getFirebaseDiagnostics;
+const logFirebaseDiagnostics = () => {
+    const d = (0, exports.getFirebaseDiagnostics)();
+    console.log('Firebase:');
+    console.log(`  configured:  ${d.configured}`);
+    console.log(`  projectId:   ${d.projectId ?? 'not set'}`);
+    console.log(`  clientEmail: ${d.clientEmail}`);
+    console.log(`  privateKey:  ${d.privateKey}`);
+    if (d.reason)
+        console.log(`  reason:      ${d.reason}`);
+};
+exports.logFirebaseDiagnostics = logFirebaseDiagnostics;
+const getMessaging = () => {
+    if (!firebaseApp)
+        return null;
+    return firebase_admin_1.default.messaging();
+};
+exports.getMessaging = getMessaging;
 exports.auth = {
     createUser: async (userData) => {
         try {

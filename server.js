@@ -219,18 +219,30 @@ const connectDatabase = async () => {
 };
 
 // Initialize Firebase (disabled by default for production)
+// Firebase has exactly ONE authoritative implementation: src/config/firebase.ts
+// (compiled to dist/config/firebase.js). This legacy entrypoint delegates to it
+// rather than pretending to initialize Firebase.
+//
+// Historically this function logged "Firebase initialized successfully" without
+// ever touching firebase-admin, which made production logs claim FCM was working
+// when it was not. That false signal has been removed.
+//
+// Production does NOT run this file — PM2 runs dist/index.js (ecosystem.config.js).
 const initializeFirebase = () => {
-  if (process.env.ENABLE_FIREBASE !== 'true') {
-    console.log('⚠️  Firebase disabled (set ENABLE_FIREBASE=true to enable)');
-    return false;
-  }
-  
   try {
-    // Firebase admin initialization would go here when configured
-    console.log('🔥 Firebase initialized successfully');
-    return true;
+    // Only available after `npm run build`.
+    const { initializeFirebase: initFirebaseAdmin, isFirebaseReady } = require('./dist/config/firebase');
+    initFirebaseAdmin();
+    const ready = isFirebaseReady();
+    if (!ready) {
+      console.warn('⚠️  Firebase Admin not initialized — see the warning above for the reason.');
+    }
+    return ready;
   } catch (error) {
-    console.error('❌ Firebase initialization failed:', error);
+    console.warn(
+      '⚠️  Firebase Admin unavailable in this entrypoint (dist/config/firebase.js not built). ' +
+      'Push notifications are INACTIVE. Run `npm run build`, or use the production entrypoint dist/index.js.'
+    );
     return false;
   }
 };

@@ -28,9 +28,22 @@ exports.notifyTeacherSelected = notifyTeacherSelected;
 exports.notifyTeacherHired = notifyTeacherHired;
 exports.notifyRequirementClosed = notifyRequirementClosed;
 const Notification_1 = require("../models/Notification");
+const pushService_1 = require("./pushService");
+function toPushPayload(doc, input) {
+    return {
+        notificationId: String(doc._id),
+        type: input.type,
+        title: input.title,
+        body: input.body,
+        screen: typeof input.data?.screen === 'string' ? input.data.screen : undefined,
+        entityType: input.entityType,
+        entityId: input.entityId ? String(input.entityId) : undefined,
+    };
+}
 async function sendNotification(input) {
+    let doc;
     try {
-        const doc = await Notification_1.Notification.create({
+        doc = await Notification_1.Notification.create({
             userId: input.userId,
             type: input.type,
             category: input.category,
@@ -41,16 +54,23 @@ async function sendNotification(input) {
             entityType: input.entityType,
             isRead: false,
         });
-        return doc;
     }
     catch (err) {
         console.error('[NotificationService] Failed to persist notification:', err);
         return null;
     }
+    try {
+        await (0, pushService_1.sendPushToUser)(input.userId, toPushPayload(doc, input));
+    }
+    catch (err) {
+        console.error('[NotificationService] Push dispatch failed:', err?.message ?? 'unknown error');
+    }
+    return doc;
 }
 async function sendNotificationToMany(userIds, input) {
     if (!userIds.length)
         return;
+    let inserted = [];
     try {
         const docs = userIds.map((uid) => ({
             userId: uid,
@@ -63,10 +83,19 @@ async function sendNotificationToMany(userIds, input) {
             entityType: input.entityType,
             isRead: false,
         }));
-        await Notification_1.Notification.insertMany(docs, { ordered: false });
+        inserted = await Notification_1.Notification.insertMany(docs, { ordered: false });
     }
     catch (err) {
         console.error('[NotificationService] Bulk notification failed:', err);
+        return;
+    }
+    for (const doc of inserted) {
+        try {
+            await (0, pushService_1.sendPushToUser)(doc.userId, toPushPayload(doc, { ...input, userId: doc.userId }));
+        }
+        catch (err) {
+            console.error('[NotificationService] Bulk push dispatch failed:', err?.message ?? 'unknown error');
+        }
     }
 }
 async function notifyTeacherApplied(parentUserId, teacherName, subject, applicationId) {

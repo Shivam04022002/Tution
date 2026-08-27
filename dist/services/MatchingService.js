@@ -4,6 +4,7 @@ exports.MatchingService = void 0;
 const ParentRequirement_1 = require("../models/ParentRequirement");
 const TeacherProfile_1 = require("../models/TeacherProfile");
 const TutorMatch_1 = require("../models/TutorMatch");
+const notificationService_1 = require("./notificationService");
 const ALGORITHM_VERSION = 'v2.0';
 const WEIGHTS = {
     subject: 0.30,
@@ -308,6 +309,7 @@ class MatchingService {
     static async saveMatches(matches) {
         const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + 7);
+        const created = [];
         for (const match of matches) {
             try {
                 await TutorMatch_1.TutorMatch.create({
@@ -321,6 +323,7 @@ class MatchingService {
                     status: 'recommended',
                     expiryDate,
                 });
+                created.push(match);
             }
             catch (error) {
                 if (error.code !== 11000) {
@@ -328,11 +331,29 @@ class MatchingService {
                 }
             }
         }
+        return created;
     }
     static async generateAndSaveForRequirement(requirement) {
         const matches = await this.generateMatchesForRequirement(requirement, 20);
-        await this.saveMatches(matches);
-        return matches.length;
+        const created = await this.saveMatches(matches);
+        await this.notifyNewMatches(requirement, created);
+        return created.length;
+    }
+    static async notifyNewMatches(requirement, created) {
+        if (created.length === 0)
+            return;
+        const r = requirement;
+        const subject = r.subjects?.[0] || 'tuition';
+        const grade = r.studentDetails?.grade || '';
+        const city = r.location?.city || 'your area';
+        for (const match of created) {
+            try {
+                await (0, notificationService_1.notifyNewLeadMatch)(match.teacherId, subject, grade, city, requirement._id);
+            }
+            catch (error) {
+                console.error(`[MatchingEngine] Lead notification failed for teacher ${String(match.teacherId)}:`, error?.message ?? 'unknown error');
+            }
+        }
     }
     static async expireCompetingMatches(requirementId, winnerTeacherId) {
         await TutorMatch_1.TutorMatch.updateMany({

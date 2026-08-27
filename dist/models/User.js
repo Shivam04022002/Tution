@@ -60,8 +60,15 @@ const userSchema = new mongoose_1.Schema({
     },
     password: {
         type: String,
-        minlength: 6,
+        minlength: 8,
         select: false,
+    },
+    username: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true,
+        lowercase: true,
     },
     role: {
         type: String,
@@ -77,7 +84,7 @@ const userSchema = new mongoose_1.Schema({
         },
         lastName: {
             type: String,
-            required: true,
+            default: '',
             trim: true,
         },
         profileImage: {
@@ -97,6 +104,49 @@ const userSchema = new mongoose_1.Schema({
             type: String,
             default: null,
         },
+    },
+    staffRole: {
+        type: String,
+        default: null,
+    },
+    employeeId: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true,
+        uppercase: true,
+    },
+    designation: {
+        type: String,
+        default: null,
+        trim: true,
+    },
+    department: {
+        type: String,
+        default: null,
+        trim: true,
+    },
+    joiningDate: {
+        type: Date,
+        default: null,
+    },
+    permissions: {
+        type: [String],
+        default: [],
+    },
+    lastLogin: {
+        type: Date,
+        default: null,
+    },
+    createdBy: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+    },
+    updatedBy: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
     },
     profileCompleted: {
         type: Boolean,
@@ -142,13 +192,19 @@ const userSchema = new mongoose_1.Schema({
 userSchema.index({ firebaseUid: 1 });
 userSchema.index({ email: 1 });
 userSchema.index({ phoneNumber: 1 });
+userSchema.index({ username: 1 }, { unique: true, sparse: true });
+userSchema.index({ employeeId: 1 }, { unique: true, sparse: true });
 userSchema.index({ role: 1 });
+userSchema.index({ staffRole: 1 });
+userSchema.index({ department: 1 });
 userSchema.index({ isActive: 1 });
 userSchema.index({ isVerified: 1 });
+userSchema.index({ createdBy: 1 });
+userSchema.index({ updatedBy: 1 });
 userSchema.virtual('fullName').get(function () {
-    return `${this.profile.firstName} ${this.profile.lastName}`;
+    return [this.profile.firstName, this.profile.lastName].filter(Boolean).join(' ');
 });
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
     const requiredFields = ['firstName', 'lastName'];
     const isProfileComplete = requiredFields.every(field => this.profile[field] &&
         this.profile[field]?.toString().trim() !== '');
@@ -159,7 +215,6 @@ userSchema.pre('save', async function (next) {
         const salt = await bcryptjs_1.default.genSalt(12);
         this.password = await bcryptjs_1.default.hash(this.password, salt);
     }
-    next();
 });
 userSchema.methods.comparePassword = async function (candidatePassword) {
     if (!this.password)

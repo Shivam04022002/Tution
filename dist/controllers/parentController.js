@@ -104,13 +104,17 @@ const registerParent = async (req, res) => {
         }).catch(err => {
             console.error(`[Matching] Auto-match failed for requirement ${requirementId}:`, err);
         });
+        const parentNameParts = (parentDetails?.parentName || '').trim().split(/\s+/);
+        const firstName = parentNameParts[0] || 'Parent';
+        const lastName = parentNameParts.slice(1).join(' ') || '';
         await User_1.User.findByIdAndUpdate(userId, {
             role: 'parent',
+            email: parentDetails?.email || req.user?.email,
+            phoneNumber: parentDetails?.mobileNumber || req.user?.phoneNumber,
             profile: {
                 ...(req.user?.profile || {}),
-                parentName: parentDetails?.parentName,
-                mobileNumber: parentDetails?.mobileNumber,
-                email: parentDetails?.email,
+                firstName,
+                lastName,
             },
             isProfileComplete: true,
         });
@@ -142,12 +146,26 @@ const getParentProfile = async (req, res) => {
                 message: 'Authentication required',
             });
         }
-        const user = await User_1.User.findById(userId).select('-password -firebaseUid');
+        let user = await User_1.User.findById(userId).select('-password -firebaseUid');
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: 'User not found',
             });
+        }
+        const profileAny = user.profile;
+        if (profileAny?.parentName && (!user.profile?.firstName || user.profile?.firstName === '')) {
+            const parentNameParts = profileAny.parentName.trim().split(/\s+/);
+            const migratedFirstName = parentNameParts[0] || 'Parent';
+            const migratedLastName = parentNameParts.slice(1).join(' ') || '';
+            user = await User_1.User.findByIdAndUpdate(userId, {
+                $set: {
+                    'profile.firstName': migratedFirstName,
+                    'profile.lastName': migratedLastName,
+                },
+                $unset: { 'profile.parentName': 1 },
+            }, { new: true, runValidators: false }).select('-password -firebaseUid');
+            console.log(`[ParentProfile] Migrated parentName to firstName/lastName for user ${userId}`);
         }
         const requirements = await ParentRequirement_1.ParentRequirement.find({ parentId: userId })
             .sort({ createdAt: -1 })
@@ -182,10 +200,15 @@ const updateParentProfile = async (req, res) => {
             });
         }
         const allowedUpdates = [
-            'profile.parentName',
-            'profile.mobileNumber',
-            'profile.email',
-            'profile.address',
+            'firstName',
+            'lastName',
+            'email',
+            'phoneNumber',
+            'profile.firstName',
+            'profile.lastName',
+            'profile.profileImage',
+            'profile.dateOfBirth',
+            'profile.gender',
         ];
         const updates = req.body;
         const updateData = {};
@@ -194,6 +217,18 @@ const updateParentProfile = async (req, res) => {
                 updateData[key] = updates[key];
             }
         });
+        if (updates.firstName && !updateData['profile.firstName']) {
+            updateData['profile.firstName'] = updates.firstName;
+        }
+        if (updates.lastName && !updateData['profile.lastName']) {
+            updateData['profile.lastName'] = updates.lastName;
+        }
+        if (updates.email && !updateData['email']) {
+            updateData['email'] = updates.email;
+        }
+        if (updates.address?.city || updates.address?.state) {
+            console.log('[ParentProfile] Address fields received but not stored in User schema');
+        }
         const user = await User_1.User.findByIdAndUpdate(userId, { $set: updateData }, { new: true, runValidators: true }).select('-password -firebaseUid');
         if (!user) {
             return res.status(404).json({

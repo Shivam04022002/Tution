@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { geoPointSync } from './geoPointSync';
 
 // Parent Requirement Interface
 export interface IParentRequirement extends Document {
@@ -30,6 +31,11 @@ export interface IParentRequirement extends Document {
     coordinates: {
       latitude: number;
       longitude: number;
+    };
+    // Derived GeoJSON mirror of `coordinates` — see models/geoPointSync.ts.
+    geoPoint?: {
+      type: 'Point';
+      coordinates: [number, number];
     };
     teachingRadius: number;
   };
@@ -200,6 +206,18 @@ const ParentRequirementSchema: Schema = new Schema({
         max: 180,
       },
     },
+    // Derived from `coordinates`; GeoJSON order is [longitude, latitude].
+    geoPoint: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number],
+        default: undefined,
+      },
+    },
     teachingRadius: {
       type: Number,
       required: true,
@@ -351,12 +369,19 @@ const ParentRequirementSchema: Schema = new Schema({
 });
 
 // Indexes for better performance
+// Keeps location.geoPoint derived from location.coordinates.
+geoPointSync(ParentRequirementSchema, {
+  sourcePath: 'location.coordinates',
+  targetPath: 'location.geoPoint',
+});
+
 ParentRequirementSchema.index({ parentId: 1 });
 ParentRequirementSchema.index({ requirementId: 1 });
 ParentRequirementSchema.index({ status: 1 });
 ParentRequirementSchema.index({ priority: 1 });
 ParentRequirementSchema.index({ 'location.city': 1 });
-ParentRequirementSchema.index({ 'location.coordinates': '2dsphere' });
+// 2dsphere must target the derived GeoJSON point, not the raw lat/lng object.
+ParentRequirementSchema.index({ 'location.geoPoint': '2dsphere' });
 ParentRequirementSchema.index({ subjects: 1 });
 ParentRequirementSchema.index({ 'studentDetails.grade': 1 });
 ParentRequirementSchema.index({ 'budget.maxAmount': 1 });
@@ -420,7 +445,7 @@ ParentRequirementSchema.pre('save', function(this: IParentRequirement) {
 // Static methods
 ParentRequirementSchema.statics.findActiveByLocation = function(latitude: number, longitude: number, maxDistance: number = 10000) {
   return this.find({
-    'location.coordinates': {
+    'location.geoPoint': {
       $near: {
         $geometry: {
           type: 'Point',

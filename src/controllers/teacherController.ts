@@ -4,6 +4,11 @@ import { User } from '../models/User';
 import { ParentRequirement } from '../models/ParentRequirement';
 import { TutorMatch } from '../models/TutorMatch';
 import { AuthRequest } from '../middleware/auth';
+import {
+  parseGeoSearchParams,
+  buildGeoNearStage,
+  attachDistanceKm,
+} from '../services/geoSearchService';
 
 // Register new teacher
 export const registerTeacher = async (req: AuthRequest, res: Response) => {
@@ -1464,6 +1469,13 @@ export const getAvailableRequirements = async (req: AuthRequest, res: Response) 
       postedDays,
     } = req.query as Record<string, string>;
 
+    // Optional radius search around the teacher's chosen point. Absent →
+    // this endpoint behaves exactly as it did before.
+    const { geo, error: geoError } = parseGeoSearchParams(req.query as Record<string, any>);
+    if (geoError) {
+      return res.status(400).json({ success: false, message: geoError });
+    }
+
     const query: Record<string, any> = {
       status: 'active',
       isActive: true,
@@ -1524,14 +1536,39 @@ export const getAvailableRequirements = async (req: AuthRequest, res: Response) 
       query.createdAt = { $gte: since };
     }
 
-    // Fetch all matching requirements (uncapped for score sorting)
-    const [total, rawReqs] = await Promise.all([
-      ParentRequirement.countDocuments(query),
-      ParentRequirement.find(query)
-        .select('requirementId studentDetails subjects tuitionType location schedule budget status priority totalMatches views createdAt expiresAt')
+    const selection = 'requirementId studentDetails subjects tuitionType location schedule budget status priority totalMatches views createdAt expiresAt';
+
+    let rawReqs: any[];
+
+    if (geo) {
+      // MongoDB does the radius filtering, distance calculation and proximity
+      // ordering; the existing eligibility conditions ride along in `query`.
+      const geoNear = buildGeoNearStage({
+        geo,
+        path: 'location.geoPoint',
+        query,
+      });
+
+      const rows = await ParentRequirement.aggregate([
+        geoNear,
+        {
+          $project: selection.split(' ').reduce(
+            (acc: Record<string, 1>, field) => {
+              acc[field] = 1;
+              return acc;
+            },
+            { distanceMeters: 1 } as Record<string, 1>
+          ),
+        },
+      ]);
+
+      rawReqs = attachDistanceKm(rows);
+    } else {
+      rawReqs = await ParentRequirement.find(query)
+        .select(selection)
         .sort({ createdAt: -1 })
-        .lean(),
-    ]);
+        .lean();
+    }
 
     // Compute match scores
     let scored = rawReqs.map((r: any) => ({
@@ -1551,6 +1588,11 @@ export const getAvailableRequirements = async (req: AuthRequest, res: Response) 
       scored.sort((a, b) => b.matchScore - a.matchScore);
     } else if (sortBy === 'budget') {
       scored.sort((a, b) => (b.budget?.maxAmount || 0) - (a.budget?.maxAmount || 0));
+    } else if (sortBy === 'distance' && geo) {
+      scored.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    } else if (geo) {
+      // A radius search defaults to proximity; $geoNear already returned the
+      // rows nearest-first, so this preserves that order.
     } else {
       // default: newest first (already sorted from DB)
     }
@@ -1565,6 +1607,9 @@ export const getAvailableRequirements = async (req: AuthRequest, res: Response) 
       data: {
         requirements: paginated,
         pagination: { page, limit, total: finalTotal, totalPages },
+        radiusKm: geo?.radiusKm ?? null,
+        searchCenter: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null,
+        sortedBy: sortBy || (geo ? 'distance' : 'recent'),
       },
     });
   } catch (error: any) {

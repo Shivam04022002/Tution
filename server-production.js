@@ -193,19 +193,18 @@ const connectDatabase = async () => {
   }
 };
 
-// Initialize Firebase (disabled by default)
+// UNUSED ENTRYPOINT — not referenced by ecosystem.config.js, package.json or
+// deploy.sh. Production runs dist/index.js (compiled from src/index.ts).
+//
+// The previous body logged "Firebase initialized successfully" without ever
+// initializing firebase-admin. That false signal is removed: the single
+// authoritative implementation is src/config/firebase.ts.
 const initializeFirebase = () => {
-  if (process.env.ENABLE_FIREBASE !== 'true') {
-    console.log('⚠️  Firebase disabled (set ENABLE_FIREBASE=true to enable)');
-    return false;
-  }
-  try {
-    console.log('🔥 Firebase initialized successfully');
-    return true;
-  } catch (error) {
-    console.error('❌ Firebase initialization failed:', error);
-    return false;
-  }
+  console.warn(
+    '⚠️  This entrypoint does not initialize Firebase Admin. Push notifications are INACTIVE. ' +
+    'Use the production entrypoint dist/index.js.'
+  );
+  return false;
 };
 
 // Routes

@@ -3,13 +3,55 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.isLocationServiceEnabled = isLocationServiceEnabled;
+exports.testApiKey = testApiKey;
 exports.geocodeAddress = geocodeAddress;
 exports.reverseGeocode = reverseGeocode;
 exports.geocodePincode = geocodePincode;
 exports.searchPlaces = searchPlaces;
 exports.getPlaceDetails = getPlaceDetails;
 const https_1 = __importDefault(require("https"));
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+const LocationConfig_1 = require("../models/LocationConfig");
+const encryption_1 = require("../utils/encryption");
+async function getApiKey() {
+    const config = await LocationConfig_1.LocationConfig.findOne();
+    if (config?.isActive && config.apiKeyEncrypted) {
+        try {
+            return (0, encryption_1.decrypt)(config.apiKeyEncrypted);
+        }
+        catch (err) {
+            console.error('[GeocodingService] Failed to decrypt stored API key:', err);
+        }
+    }
+    return process.env.GOOGLE_MAPS_API_KEY || '';
+}
+async function isLocationServiceEnabled() {
+    const config = await LocationConfig_1.LocationConfig.findOne();
+    return !!(config?.isActive && config.apiKeyEncrypted);
+}
+async function testApiKey(apiKey) {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent('India Gate, New Delhi, India')}&key=${apiKey}&region=in`;
+    try {
+        const body = await httpGet(url);
+        const data = JSON.parse(body);
+        if (data.status !== 'OK' || !data.results?.length)
+            return null;
+        const result = data.results[0];
+        return {
+            latitude: result.geometry.location.lat,
+            longitude: result.geometry.location.lng,
+            formattedAddress: result.formatted_address,
+            city: '',
+            pincode: '',
+            state: '',
+            country: '',
+        };
+    }
+    catch (err) {
+        console.error('[GeocodingService] testApiKey error:', err);
+        return null;
+    }
+}
 function httpGet(url) {
     return new Promise((resolve, reject) => {
         https_1.default.get(url, res => {
@@ -25,12 +67,13 @@ function extractAddressComponent(components, type, useShort = false) {
     return comp ? (useShort ? comp.short_name : comp.long_name) : '';
 }
 async function geocodeAddress(address) {
-    if (!GOOGLE_MAPS_API_KEY) {
-        console.warn('[GeocodingService] GOOGLE_MAPS_API_KEY not set; returning null');
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+        console.warn('[GeocodingService] No Google Maps API key configured; returning null');
         return null;
     }
     const encoded = encodeURIComponent(address);
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encoded}&key=${GOOGLE_MAPS_API_KEY}&region=in`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encoded}&key=${apiKey}&region=in`;
     try {
         const body = await httpGet(url);
         const data = JSON.parse(body);
@@ -57,11 +100,12 @@ async function geocodeAddress(address) {
     }
 }
 async function reverseGeocode(latitude, longitude) {
-    if (!GOOGLE_MAPS_API_KEY) {
-        console.warn('[GeocodingService] GOOGLE_MAPS_API_KEY not set; returning null');
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+        console.warn('[GeocodingService] No Google Maps API key configured; returning null');
         return null;
     }
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}&region=in`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}&region=in`;
     try {
         const body = await httpGet(url);
         const data = JSON.parse(body);
@@ -90,9 +134,10 @@ async function geocodePincode(pincode) {
     return geocodeAddress(`${pincode}, India`);
 }
 async function searchPlaces(query, latitude, longitude) {
-    if (!GOOGLE_MAPS_API_KEY)
+    const apiKey = await getApiKey();
+    if (!apiKey)
         return [];
-    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}&components=country:in&types=geocode`;
+    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}&components=country:in&types=geocode`;
     if (latitude && longitude) {
         url += `&location=${latitude},${longitude}&radius=50000`;
     }
@@ -114,9 +159,10 @@ async function searchPlaces(query, latitude, longitude) {
     }
 }
 async function getPlaceDetails(placeId) {
-    if (!GOOGLE_MAPS_API_KEY)
+    const apiKey = await getApiKey();
+    if (!apiKey)
         return null;
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address,address_component&key=${GOOGLE_MAPS_API_KEY}`;
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address,address_component&key=${apiKey}`;
     try {
         const body = await httpGet(url);
         const data = JSON.parse(body);

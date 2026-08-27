@@ -1,6 +1,7 @@
 import { ParentRequirement, IParentRequirement } from '../models/ParentRequirement';
 import { TeacherProfile, ITeacherProfile } from '../models/TeacherProfile';
 import { TutorMatch } from '../models/TutorMatch';
+import { notifyNewLeadMatch } from './notificationService';
 import mongoose from 'mongoose';
 
 // ─── Algorithm version ────────────────────────────────────────────────────────
@@ -527,9 +528,19 @@ export class MatchingService {
   }
 
   // ── 10. Save matches to DB ──────────────────────────────────────────────────
-  public static async saveMatches(matches: MatchResult[]): Promise<void> {
+  /**
+   * Persist matches, returning only the ones that did not already exist.
+   *
+   * TutorMatch has a unique (requirementId, teacherId) index, so a repeat run
+   * of the batch engine raises duplicate-key errors that are swallowed here.
+   * That makes a successful create the authoritative "this match is new"
+   * signal, and it is what keeps lead notifications idempotent across the
+   * 6-hourly cron and every server restart.
+   */
+  public static async saveMatches(matches: MatchResult[]): Promise<MatchResult[]> {
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 7);
+    const created: MatchResult[] = [];
 
     for (const match of matches) {
       try {
@@ -544,12 +555,17 @@ export class MatchingService {
           status: 'recommended',
           expiryDate,
         } as any);
+        created.push(match);
       } catch (error: any) {
         if (error.code !== 11000) {
           console.error('Error saving match:', error);
         }
+        // 11000 => this teacher was already matched to this requirement.
+        // Not new, so deliberately not re-notified.
       }
     }
+
+    return created;
   }
 
   // ── 11. Auto-generate and save for a newly created requirement ──────────────
@@ -557,8 +573,41 @@ export class MatchingService {
     requirement: IParentRequirement
   ): Promise<number> {
     const matches = await this.generateMatchesForRequirement(requirement, 20);
-    await this.saveMatches(matches);
-    return matches.length;
+    const created = await this.saveMatches(matches);
+
+    // Notify only the teachers whose match was created just now.
+    await this.notifyNewMatches(requirement, created);
+
+    return created.length;
+  }
+
+  /**
+   * Tell each newly matched teacher that a lead is available.
+   *
+   * Best-effort: notification failures are logged and swallowed so they can
+   * never abort the matching run that produced them.
+   */
+  private static async notifyNewMatches(
+    requirement: IParentRequirement,
+    created: MatchResult[]
+  ): Promise<void> {
+    if (created.length === 0) return;
+
+    const r = requirement as any;
+    const subject: string = r.subjects?.[0] || 'tuition';
+    const grade: string = r.studentDetails?.grade || '';
+    const city: string = r.location?.city || 'your area';
+
+    for (const match of created) {
+      try {
+        await notifyNewLeadMatch(match.teacherId, subject, grade, city, requirement._id as any);
+      } catch (error: any) {
+        console.error(
+          `[MatchingEngine] Lead notification failed for teacher ${String(match.teacherId)}:`,
+          error?.message ?? 'unknown error'
+        );
+      }
+    }
   }
 
   // ── 12. Expire competing matches when a requirement is fulfilled ─────────────

@@ -4,15 +4,27 @@ export interface IUser extends Document {
     email: string;
     phoneNumber: string;
     password?: string;
+    username?: string | null;
     role: 'parent' | 'teacher' | 'admin' | 'staff';
+    staffRole?: string | null;
     profile: {
         firstName: string;
         lastName: string;
-        profileImage?: string;
-        dateOfBirth?: Date;
-        gender?: 'male' | 'female' | 'other';
-        department?: string;
+        profileImage?: string | null;
+        dateOfBirth?: Date | null;
+        gender?: 'male' | 'female' | 'other' | null;
+        department?: string | null;
     };
+    employeeId?: string | null;
+    designation?: string | null;
+    department?: string | null;
+    joiningDate?: Date | null;
+    dateOfBirth?: Date | null;
+    gender?: 'male' | 'female' | 'other' | null;
+    permissions?: string[];
+    lastLogin?: Date | null;
+    createdBy?: mongoose.Types.ObjectId | null;
+    updatedBy?: mongoose.Types.ObjectId | null;
     profileCompleted: boolean;
     onboardingCompleted: boolean;
     preferences: {

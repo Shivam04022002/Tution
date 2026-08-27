@@ -62,12 +62,6 @@ router.get('/filter', tutorFilterController_1.filterTutors);
 router.get('/filter/options', tutorFilterController_1.getFilterOptions);
 router.get('/subjects', teacherController_1.getSubjects);
 router.get('/classes', teacherController_1.getClasses);
-router.get('/:id', teacherController_1.getTeacherById);
-router.get('/:id/gallery', teacherController_1.getTeacherGallery);
-router.get('/:id/stats', teacherController_1.getTeacherStats);
-router.get('/:id/reviews', auth_1.optionalAuth, reviewController_1.getTutorReviews);
-router.get('/:id/ratings', auth_1.optionalAuth, reviewController_1.getTutorRatings);
-router.post('/:id/reviews', auth_1.authenticate, (0, auth_1.authorize)('parent'), reviewController_1.createReview);
 router.post('/register', auth_1.authenticate, (0, auth_1.authorize)('teacher'), uploadFields, teacherValidation_1.registerTeacherValidation, teacherController_1.registerTeacher);
 router.get('/profile/me', auth_1.authenticate, (0, auth_1.authorize)('teacher'), teacherController_1.getTeacherProfile);
 router.put('/profile', auth_1.authenticate, (0, auth_1.authorize)('teacher'), upload.single('profilePicture'), teacherValidation_1.updateTeacherValidation, teacherController_1.updateTeacherProfile);
@@ -93,5 +87,11 @@ router.get('/analytics/funnel', auth_1.authenticate, (0, auth_1.authorize)('teac
 router.get('/analytics/trends', auth_1.authenticate, (0, auth_1.authorize)('teacher'), teacherAnalyticsController_1.getTeacherTrendsAnalytics);
 router.get('/analytics/performance', auth_1.authenticate, (0, auth_1.authorize)('teacher'), teacherAnalyticsController_1.getTeacherPerformanceAnalytics);
 router.get('/earnings', auth_1.authenticate, (0, auth_1.authorize)('teacher'), teacherAnalyticsController_1.getTeacherEarningsAnalytics);
+router.get('/:id', teacherController_1.getTeacherById);
+router.get('/:id/gallery', teacherController_1.getTeacherGallery);
+router.get('/:id/stats', teacherController_1.getTeacherStats);
+router.get('/:id/reviews', auth_1.optionalAuth, reviewController_1.getTutorReviews);
+router.get('/:id/ratings', auth_1.optionalAuth, reviewController_1.getTutorRatings);
+router.post('/:id/reviews', auth_1.authenticate, (0, auth_1.authorize)('parent'), reviewController_1.createReview);
 exports.default = router;
 //# sourceMappingURL=teacher.js.map

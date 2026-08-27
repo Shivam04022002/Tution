@@ -112,12 +112,6 @@ const getTeacherDashboard = async (req, res) => {
             });
         }
         const teacherProfile = await TeacherProfile_1.TeacherProfile.findOne({ userId: teacherId });
-        if (!teacherProfile) {
-            return res.status(404).json({
-                success: false,
-                message: 'Teacher profile not found',
-            });
-        }
         const [matches, applications, upcomingDemos, activeStudents,] = await Promise.all([
             TutorMatch_1.TutorMatch.find({
                 teacherId,
@@ -165,17 +159,20 @@ const getTeacherDashboard = async (req, res) => {
             })
                 .sort({ 'schedule.startDate': -1 }),
         ]);
-        const profileCompletion = calculateTeacherProfileCompletion(teacherProfile);
+        const profileCompletion = teacherProfile
+            ? calculateTeacherProfileCompletion(teacherProfile)
+            : 0;
         return res.status(200).json({
             success: true,
             data: {
+                hasProfile: !!teacherProfile,
                 stats: {
-                    activeStudents: teacherProfile.stats?.activeStudents || 0,
-                    totalStudents: teacherProfile.stats?.totalStudents || 0,
-                    totalEarnings: teacherProfile.stats?.totalEarnings || 0,
-                    averageRating: teacherProfile.stats?.averageRating || 0,
+                    activeStudents: teacherProfile?.stats?.activeStudents || 0,
+                    totalStudents: teacherProfile?.stats?.totalStudents || 0,
+                    totalEarnings: teacherProfile?.stats?.totalEarnings || 0,
+                    averageRating: teacherProfile?.stats?.averageRating || 0,
                     profileCompletion,
-                    verificationStatus: teacherProfile.verificationStatus || 'pending',
+                    verificationStatus: teacherProfile?.verificationStatus || 'pending',
                     tuitionRequestsAvailable: matches.length,
                     applicationsSent: applications.length,
                 },

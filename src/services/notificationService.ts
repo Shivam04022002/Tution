@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Notification, NotificationType, NotificationCategory } from '../models/Notification';
+import { sendPushToUser, PushPayload } from './pushService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core send function — all auto-triggers go through here
@@ -15,9 +16,28 @@ export interface SendNotificationInput {
   entityType?: string;
 }
 
+/**
+ * Build the FCM payload from a persisted notification.
+ * Only routing identifiers travel over FCM — the database record stays the
+ * source of truth, so no private profile data is put on the wire.
+ */
+function toPushPayload(doc: any, input: SendNotificationInput): PushPayload {
+  return {
+    notificationId: String(doc._id),
+    type:           input.type,
+    title:          input.title,
+    body:           input.body,
+    screen:         typeof input.data?.screen === 'string' ? input.data.screen : undefined,
+    entityType:     input.entityType,
+    entityId:       input.entityId ? String(input.entityId) : undefined,
+  };
+}
+
 export async function sendNotification(input: SendNotificationInput) {
+  let doc;
+
   try {
-    const doc = await Notification.create({
+    doc = await Notification.create({
       userId:     input.userId,
       type:       input.type,
       category:   input.category,
@@ -28,12 +48,21 @@ export async function sendNotification(input: SendNotificationInput) {
       entityType: input.entityType,
       isRead:     false,
     });
-    return doc;
   } catch (err) {
     // Non-fatal — log and continue
     console.error('[NotificationService] Failed to persist notification:', err);
     return null;
   }
+
+  // Push is best-effort. The in-app record already exists and is authoritative,
+  // so a delivery failure must never propagate to the calling business flow.
+  try {
+    await sendPushToUser(input.userId, toPushPayload(doc, input));
+  } catch (err: any) {
+    console.error('[NotificationService] Push dispatch failed:', err?.message ?? 'unknown error');
+  }
+
+  return doc;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,6 +73,9 @@ export async function sendNotificationToMany(
   input: Omit<SendNotificationInput, 'userId'>,
 ) {
   if (!userIds.length) return;
+
+  let inserted: any[] = [];
+
   try {
     const docs = userIds.map((uid) => ({
       userId:     uid,
@@ -56,9 +88,20 @@ export async function sendNotificationToMany(
       entityType: input.entityType,
       isRead:     false,
     }));
-    await Notification.insertMany(docs, { ordered: false });
+    inserted = await Notification.insertMany(docs, { ordered: false });
   } catch (err) {
     console.error('[NotificationService] Bulk notification failed:', err);
+    return;
+  }
+
+  // Each recipient gets their own record AND their own push, so read/unread
+  // state stays per-user.
+  for (const doc of inserted) {
+    try {
+      await sendPushToUser(doc.userId, toPushPayload(doc, { ...input, userId: doc.userId }));
+    } catch (err: any) {
+      console.error('[NotificationService] Bulk push dispatch failed:', err?.message ?? 'unknown error');
+    }
   }
 }
 

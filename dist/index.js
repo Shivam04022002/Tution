@@ -132,6 +132,7 @@ app.use((0, morgan_1.default)('combined'));
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
 (0, firebase_1.initializeFirebase)();
+(0, firebase_1.logFirebaseDiagnostics)();
 app.use('/api', routes_1.default);
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);

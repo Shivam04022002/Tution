@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ParentRequirement = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
+const geoPointSync_1 = require("./geoPointSync");
 const ParentRequirementSchema = new mongoose_1.Schema({
     parentId: {
         type: mongoose_1.Schema.Types.ObjectId,
@@ -54,8 +55,8 @@ const ParentRequirementSchema = new mongoose_1.Schema({
         },
         age: {
             type: Number,
-            required: true,
-            min: 3,
+            required: false,
+            min: 0,
             max: 25,
         },
         grade: {
@@ -68,7 +69,7 @@ const ParentRequirementSchema = new mongoose_1.Schema({
         },
         schoolName: {
             type: String,
-            required: true,
+            required: false,
             trim: true,
         },
         genderPreference: {
@@ -122,11 +123,13 @@ const ParentRequirementSchema = new mongoose_1.Schema({
     location: {
         address: {
             type: String,
-            required: true,
+            required: false,
+            default: '',
         },
         city: {
             type: String,
-            required: true,
+            required: false,
+            default: '',
         },
         pincode: {
             type: String,
@@ -145,6 +148,17 @@ const ParentRequirementSchema = new mongoose_1.Schema({
                 required: true,
                 min: -180,
                 max: 180,
+            },
+        },
+        geoPoint: {
+            type: {
+                type: String,
+                enum: ['Point'],
+                default: 'Point',
+            },
+            coordinates: {
+                type: [Number],
+                default: undefined,
             },
         },
         teachingRadius: {
@@ -190,7 +204,7 @@ const ParentRequirementSchema = new mongoose_1.Schema({
     },
     status: {
         type: String,
-        enum: ['draft', 'published', 'receiving_applications', 'shortlisted', 'demo_scheduled', 'teacher_selected', 'hired', 'closed', 'cancelled', 'expired', 'paused'],
+        enum: ['draft', 'active', 'published', 'receiving_applications', 'shortlisted', 'demo_scheduled', 'teacher_selected', 'hired', 'closed', 'cancelled', 'expired', 'paused'],
         default: 'published',
     },
     applicationsCount: {
@@ -296,12 +310,16 @@ const ParentRequirementSchema = new mongoose_1.Schema({
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
 });
+(0, geoPointSync_1.geoPointSync)(ParentRequirementSchema, {
+    sourcePath: 'location.coordinates',
+    targetPath: 'location.geoPoint',
+});
 ParentRequirementSchema.index({ parentId: 1 });
 ParentRequirementSchema.index({ requirementId: 1 });
 ParentRequirementSchema.index({ status: 1 });
 ParentRequirementSchema.index({ priority: 1 });
 ParentRequirementSchema.index({ 'location.city': 1 });
-ParentRequirementSchema.index({ 'location.coordinates': '2dsphere' });
+ParentRequirementSchema.index({ 'location.geoPoint': '2dsphere' });
 ParentRequirementSchema.index({ subjects: 1 });
 ParentRequirementSchema.index({ 'studentDetails.grade': 1 });
 ParentRequirementSchema.index({ 'budget.maxAmount': 1 });
@@ -349,7 +367,7 @@ ParentRequirementSchema.pre('save', function () {
 });
 ParentRequirementSchema.statics.findActiveByLocation = function (latitude, longitude, maxDistance = 10000) {
     return this.find({
-        'location.coordinates': {
+        'location.geoPoint': {
             $near: {
                 $geometry: {
                     type: 'Point',

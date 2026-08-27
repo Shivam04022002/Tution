@@ -7,6 +7,8 @@ const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middleware/auth");
 const notificationController_1 = require("../controllers/notificationController");
 const router = express_1.default.Router();
+router.post('/device-token', auth_1.authenticate, notificationController_1.registerDeviceTokenHandler);
+router.delete('/device-token', auth_1.authenticate, notificationController_1.unregisterDeviceTokenHandler);
 router.get('/unread-count', auth_1.authenticate, notificationController_1.getUnreadCount);
 router.get('/', auth_1.authenticate, notificationController_1.listNotifications);
 router.patch('/read-all', auth_1.authenticate, notificationController_1.markAllAsRead);

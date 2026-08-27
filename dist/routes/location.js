@@ -6,7 +6,11 @@ const geocodingService_1 = require("../services/geocodingService");
 const locationService_1 = require("../services/locationService");
 const distanceService_1 = require("../services/distanceService");
 const router = (0, express_1.Router)();
-router.get('/geocode', auth_1.authenticate, async (req, res) => {
+router.get('/status', async (_req, res) => {
+    const enabled = await (0, geocodingService_1.isLocationServiceEnabled)();
+    return res.json({ success: true, data: { enabled } });
+});
+router.get('/geocode', async (req, res) => {
     const { address } = req.query;
     if (!address || typeof address !== 'string') {
         return res.status(400).json({ success: false, message: 'address query param is required' });
@@ -17,7 +21,7 @@ router.get('/geocode', auth_1.authenticate, async (req, res) => {
     }
     return res.json({ success: true, data: result });
 });
-router.get('/reverse-geocode', auth_1.authenticate, async (req, res) => {
+router.get('/reverse-geocode', async (req, res) => {
     const { lat, lng } = req.query;
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lng);
@@ -31,7 +35,7 @@ router.get('/reverse-geocode', auth_1.authenticate, async (req, res) => {
     }
     return res.json({ success: true, data: result });
 });
-router.get('/places/search', auth_1.authenticate, async (req, res) => {
+router.get('/places/search', async (req, res) => {
     const { query, lat, lng } = req.query;
     if (!query || typeof query !== 'string') {
         return res.status(400).json({ success: false, message: 'query param is required' });
@@ -41,7 +45,7 @@ router.get('/places/search', auth_1.authenticate, async (req, res) => {
     const suggestions = await (0, geocodingService_1.searchPlaces)(query, latitude, longitude);
     return res.json({ success: true, data: suggestions });
 });
-router.get('/places/details', auth_1.authenticate, async (req, res) => {
+router.get('/places/details', async (req, res) => {
     const { placeId } = req.query;
     if (!placeId || typeof placeId !== 'string') {
         return res.status(400).json({ success: false, message: 'placeId query param is required' });

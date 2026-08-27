@@ -1,16 +1,44 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRecommendedRequirements = exports.getRequirementById = exports.hideRequirement = exports.unsaveRequirement = exports.saveRequirement = exports.getRequirementMatchAnalysis = exports.getAvailableRequirements = exports.getMatchingEligibility = exports.updateDiscoverability = exports.getDiscoverability = exports.updateAvailability = exports.getAvailability = exports.uploadDocuments = exports.updatePreferences = exports.getPreferences = exports.getClasses = exports.getSubjects = exports.getProfileCompletion = exports.toggleVacationMode = exports.getTeacherStats = exports.getTeacherGallery = exports.getTeacherById = exports.getAllTeachers = exports.updateTeacherProfile = exports.getTeacherProfile = exports.registerTeacher = void 0;
 const TeacherProfile_1 = require("../models/TeacherProfile");
 const User_1 = require("../models/User");
 const ParentRequirement_1 = require("../models/ParentRequirement");
 const TutorMatch_1 = require("../models/TutorMatch");
-const cloudinary_1 = require("cloudinary");
-cloudinary_1.v2.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const geoSearchService_1 = require("../services/geoSearchService");
 const registerTeacher = async (req, res) => {
     try {
         const userId = req.user?._id;
@@ -33,28 +61,45 @@ const registerTeacher = async (req, res) => {
         let profilePictureUrl = personalDetails?.profilePicture || '';
         let aadhaarDocumentUrl = '';
         const certificateUrls = [];
+        const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await Promise.resolve().then(() => __importStar(require('../services/s3Service')));
+        const { validateFile } = await Promise.resolve().then(() => __importStar(require('../services/fileValidationService')));
         if (files) {
             if (files.profilePicture && files.profilePicture[0]) {
-                const result = await cloudinary_1.v2.uploader.upload(files.profilePicture[0].path, {
-                    folder: 'teachers/profile-pictures',
-                    public_id: `profile_${firebaseUid}`,
-                });
-                profilePictureUrl = result.secure_url;
+                const validation = validateFile(files.profilePicture[0], 'profile-image');
+                if (!validation.isValid) {
+                    return res.status(400).json({
+                        success: false,
+                        message: validation.error,
+                    });
+                }
+                const s3Key = generateS3Key('profile-images', firebaseUid, files.profilePicture[0].originalname);
+                await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
+                profilePictureUrl = generateCloudFrontUrl(s3Key);
             }
             if (files.aadhaarDocument && files.aadhaarDocument[0]) {
-                const result = await cloudinary_1.v2.uploader.upload(files.aadhaarDocument[0].path, {
-                    folder: 'teachers/documents',
-                    public_id: `aadhaar_${firebaseUid}`,
-                });
-                aadhaarDocumentUrl = result.secure_url;
+                const validation = validateFile(files.aadhaarDocument[0], 'document');
+                if (!validation.isValid) {
+                    return res.status(400).json({
+                        success: false,
+                        message: validation.error,
+                    });
+                }
+                const s3Key = generateS3Key('documents', firebaseUid, files.aadhaarDocument[0].originalname);
+                await uploadMulterFile(files.aadhaarDocument[0], { key: s3Key, contentType: files.aadhaarDocument[0].mimetype });
+                aadhaarDocumentUrl = generateCloudFrontUrl(s3Key);
             }
             if (files.certificates && files.certificates.length > 0) {
                 for (let i = 0; i < files.certificates.length; i++) {
-                    const result = await cloudinary_1.v2.uploader.upload(files.certificates[i].path, {
-                        folder: 'teachers/certificates',
-                        public_id: `certificate_${firebaseUid}_${i}`,
-                    });
-                    certificateUrls.push(result.secure_url);
+                    const validation = validateFile(files.certificates[i], 'certificate');
+                    if (!validation.isValid) {
+                        return res.status(400).json({
+                            success: false,
+                            message: validation.error,
+                        });
+                    }
+                    const s3Key = generateS3Key('certificates', firebaseUid, files.certificates[i].originalname);
+                    await uploadMulterFile(files.certificates[i], { key: s3Key, contentType: files.certificates[i].mimetype });
+                    certificateUrls.push(generateCloudFrontUrl(s3Key));
                 }
             }
         }
@@ -71,16 +116,23 @@ const registerTeacher = async (req, res) => {
         if (pricingDetails?.pricing === 'Custom Amount') {
             monthlyRate = parseInt(pricingDetails.customAmount) || 0;
         }
-        else {
-            const range = pricingDetails?.pricing?.replace('₹', '').split('-');
-            if (range && range.length === 2) {
-                monthlyRate = (parseInt(range[0]) + parseInt(range[1])) / 2;
-            }
-            else if (pricingDetails?.pricing?.includes('10000+')) {
-                monthlyRate = 10000;
+        else if (pricingDetails?.pricing?.includes('10000+')) {
+            monthlyRate = 10000;
+        }
+        else if (pricingDetails?.pricing) {
+            const clean = pricingDetails.pricing.replace(/₹/g, '').replace(/\s/g, '');
+            const range = clean.split('-').filter(Boolean);
+            if (range.length === 2) {
+                monthlyRate = ((parseInt(range[0]) || 0) + (parseInt(range[1]) || 0)) / 2;
             }
         }
-        hourlyRate = Math.round(monthlyRate / 40);
+        monthlyRate = Math.max(1000, monthlyRate);
+        hourlyRate = Math.max(50, Math.round(monthlyRate / 40));
+        const teachingModeArray = Array.isArray(teachingMode)
+            ? teachingMode
+            : teachingMode
+                ? [teachingMode]
+                : [];
         const teacherProfile = new TeacherProfile_1.TeacherProfile({
             userId,
             basicDetails: {
@@ -110,7 +162,7 @@ const registerTeacher = async (req, res) => {
                 classes: teachingDetails?.classes || [],
                 boards: teachingDetails?.boards || [],
                 specialization: teachingDetails?.subjects?.[0] || '',
-                teachingModes: (teachingMode || []).map((mode) => {
+                teachingModes: teachingModeArray.map((mode) => {
                     const modeMap = {
                         'Home Tuition': 'student_home',
                         'Online Tuition': 'online',
@@ -119,7 +171,7 @@ const registerTeacher = async (req, res) => {
                     };
                     return modeMap[mode] || mode.toLowerCase().replace(' ', '_');
                 }),
-                groupTuitionOption: teachingMode?.includes('Group Tuition') || false,
+                groupTuitionOption: teachingModeArray.includes('Group Tuition') || false,
                 groupSize: 5,
                 groupRate: 0,
             },
@@ -137,6 +189,21 @@ const registerTeacher = async (req, res) => {
                 availableDays: availability?.days || [],
                 availableTimeSlots: availability?.timeSlots || [],
                 vacationMode: false,
+            },
+            discoverability: {
+                availableForNewStudents: true,
+                visibleInMarketplace: true,
+                onlineStatus: 'hybrid',
+                travelSettings: {
+                    maxTravelDistance: 10,
+                    preferredTravelModes: [],
+                },
+                locationCoverage: {
+                    state: personalDetails?.state || personalDetails?.city || '',
+                    city: personalDetails?.city || '',
+                    areas: locationPreferences || [],
+                    pincodes: personalDetails?.pincode ? [personalDetails.pincode] : [],
+                },
             },
             bio: professionalDetails?.bio || '',
             pricingRevenue: {
@@ -193,6 +260,14 @@ const registerTeacher = async (req, res) => {
     }
     catch (error) {
         console.error('Teacher registration error:', error);
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map((e) => e.message);
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: messages,
+            });
+        }
         return res.status(500).json({
             success: false,
             message: 'Failed to register teacher',
@@ -234,6 +309,27 @@ const getTeacherProfile = async (req, res) => {
     }
 };
 exports.getTeacherProfile = getTeacherProfile;
+const flattenObject = (obj, prefix = '', result = {}) => {
+    for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            const newKey = prefix ? `${prefix}.${key}` : key;
+            const value = obj[key];
+            if (value === null || value === undefined) {
+                result[newKey] = value;
+            }
+            else if (Array.isArray(value)) {
+                result[newKey] = value;
+            }
+            else if (typeof value === 'object' && !Array.isArray(value)) {
+                flattenObject(value, newKey, result);
+            }
+            else {
+                result[newKey] = value;
+            }
+        }
+    }
+    return result;
+};
 const updateTeacherProfile = async (req, res) => {
     try {
         const userId = req.user?._id;
@@ -268,6 +364,7 @@ const updateTeacherProfile = async (req, res) => {
             'teachingDetails.groupSize',
             'locationAvailability.address',
             'locationAvailability.preferredAreas',
+            'locationAvailability.preferredLocations',
             'locationAvailability.availableDays',
             'locationAvailability.availableTimeSlots',
             'locationAvailability.vacationMode',
@@ -278,19 +375,36 @@ const updateTeacherProfile = async (req, res) => {
             'bio',
         ];
         const updates = req.body;
+        const flattenedUpdates = flattenObject(updates);
         const updateData = {};
-        Object.keys(updates).forEach((key) => {
-            if (allowedUpdates.includes(key) || allowedUpdates.some((allowed) => key.startsWith(allowed + '.'))) {
-                updateData[key] = updates[key];
+        Object.keys(flattenedUpdates).forEach((key) => {
+            if (allowedUpdates.includes(key)) {
+                updateData[key] = flattenedUpdates[key];
+            }
+            else if (allowedUpdates.some((allowed) => key.startsWith(allowed + '.'))) {
+                updateData[key] = flattenedUpdates[key];
             }
         });
         const files = req.files;
         if (files?.profilePicture?.[0]) {
-            const result = await cloudinary_1.v2.uploader.upload(files.profilePicture[0].path, {
-                folder: 'teachers/profile-pictures',
-                public_id: `profile_${req.user?.firebaseUid}_${Date.now()}`,
+            const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await Promise.resolve().then(() => __importStar(require('../services/s3Service')));
+            const { validateFile } = await Promise.resolve().then(() => __importStar(require('../services/fileValidationService')));
+            const validation = validateFile(files.profilePicture[0], 'profile-image');
+            if (!validation.isValid) {
+                return res.status(400).json({
+                    success: false,
+                    message: validation.error,
+                });
+            }
+            const s3Key = generateS3Key('profile-images', req.user?.firebaseUid || 'unknown', files.profilePicture[0].originalname);
+            await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
+            updateData['basicDetails.profilePhoto'] = generateCloudFrontUrl(s3Key);
+        }
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No valid updates provided. Check field names against allowed updates.',
             });
-            updateData['basicDetails.profilePhoto'] = result.secure_url;
         }
         const updatedProfile = await TeacherProfile_1.TeacherProfile.findOneAndUpdate({ userId }, { $set: updateData }, { new: true, runValidators: true });
         return res.status(200).json({
@@ -520,7 +634,33 @@ const getProfileCompletion = async (req, res) => {
         }
         const profile = await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean();
         if (!profile) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+            const emptySections = {
+                basicDetails: false,
+                profilePhoto: false,
+                education: false,
+                subjects: false,
+                classes: false,
+                boards: false,
+                teachingModes: false,
+                location: false,
+                availability: false,
+                discoverability: false,
+                pricing: false,
+                documents: false,
+            };
+            return res.status(200).json({
+                success: true,
+                data: {
+                    percentage: 0,
+                    completedCount: 0,
+                    totalCount: Object.keys(emptySections).length,
+                    sections: emptySections,
+                    canApply: false,
+                    verificationStatus: 'pending',
+                    isVerified: false,
+                    hasProfile: false,
+                },
+            });
         }
         const sections = {
             basicDetails: !!(profile.basicDetails?.fullName &&
@@ -750,14 +890,29 @@ const uploadDocuments = async (req, res) => {
                 message: 'Teacher profile not found',
             });
         }
+        const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await Promise.resolve().then(() => __importStar(require('../services/s3Service')));
+        const { validateFile } = await Promise.resolve().then(() => __importStar(require('../services/fileValidationService')));
         for (const [fieldName, fileArray] of Object.entries(files)) {
             uploadedUrls[fieldName] = [];
             for (const file of fileArray) {
-                const result = await cloudinary_1.v2.uploader.upload(file.path, {
-                    folder: `teachers/${fieldName}`,
-                    public_id: `${fieldName}_${req.user?.firebaseUid}_${Date.now()}`,
-                });
-                uploadedUrls[fieldName].push(result.secure_url);
+                let mediaType = 'document';
+                if (fieldName === 'certificates') {
+                    mediaType = 'certificate';
+                }
+                else if (fieldName === 'portfolio') {
+                    mediaType = 'document';
+                }
+                const validation = validateFile(file, mediaType);
+                if (!validation.isValid) {
+                    return res.status(400).json({
+                        success: false,
+                        message: validation.error,
+                    });
+                }
+                const s3Key = generateS3Key(fieldName === 'certificates' ? 'certificates' : 'documents', req.user?.firebaseUid || 'unknown', file.originalname);
+                await uploadMulterFile(file, { key: s3Key, contentType: file.mimetype });
+                const cloudFrontUrl = generateCloudFrontUrl(s3Key);
+                uploadedUrls[fieldName].push(cloudFrontUrl);
             }
         }
         if (uploadedUrls.certificates?.length > 0) {
@@ -792,7 +947,17 @@ const getAvailability = async (req, res) => {
         const profile = await TeacherProfile_1.TeacherProfile.findOne({ userId })
             .select('locationAvailability');
         if (!profile) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+            return res.status(200).json({
+                success: true,
+                data: {
+                    city: '',
+                    address: '',
+                    pincode: '',
+                    availableDays: [],
+                    customTimeSlots: [],
+                    weeklySchedule: {},
+                },
+            });
         }
         return res.status(200).json({
             success: true,
@@ -864,7 +1029,16 @@ const getDiscoverability = async (req, res) => {
         const profile = await TeacherProfile_1.TeacherProfile.findOne({ userId })
             .select('discoverability');
         if (!profile) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+            return res.status(200).json({
+                success: true,
+                data: {
+                    availableForNewStudents: false,
+                    visibleInMarketplace: false,
+                    onlineStatus: 'offline',
+                    travelSettings: {},
+                    locationCoverage: { city: '', state: '', areas: [], pincodes: [] },
+                },
+            });
         }
         return res.status(200).json({
             success: true,
@@ -928,7 +1102,18 @@ const getMatchingEligibility = async (req, res) => {
         const profile = await TeacherProfile_1.TeacherProfile.findOne({ userId })
             .select('profileCompletionPercentage verificationStatus discoverability locationAvailability');
         if (!profile) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
+            return res.status(200).json({
+                success: true,
+                data: {
+                    isEligible: false,
+                    profileCompletionPercentage: 0,
+                    verificationStatus: 'pending',
+                    visibleInMarketplace: false,
+                    availableForNewStudents: false,
+                    hasActiveDays: false,
+                    hasTimeSlots: false,
+                },
+            });
         }
         const isEligible = (profile.profileCompletionPercentage || 0) >= 70 &&
             profile.verificationStatus !== 'rejected' &&
@@ -1036,14 +1221,15 @@ const getAvailableRequirements = async (req, res) => {
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
-        const teacher = await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean();
-        if (!teacher) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-        }
+        const teacher = (await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean()) ?? {};
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 15));
         const skip = (page - 1) * limit;
         const { search, subject, board, grade, city, area, minBudget, maxBudget, mode, minMatch, sortBy, postedDays, } = req.query;
+        const { geo, error: geoError } = (0, geoSearchService_1.parseGeoSearchParams)(req.query);
+        if (geoError) {
+            return res.status(400).json({ success: false, message: geoError });
+        }
         const query = {
             status: 'active',
             isActive: true,
@@ -1086,13 +1272,31 @@ const getAvailableRequirements = async (req, res) => {
             since.setDate(since.getDate() - parseInt(postedDays));
             query.createdAt = { $gte: since };
         }
-        const [total, rawReqs] = await Promise.all([
-            ParentRequirement_1.ParentRequirement.countDocuments(query),
-            ParentRequirement_1.ParentRequirement.find(query)
-                .select('requirementId studentDetails subjects tuitionType location schedule budget status priority totalMatches views createdAt expiresAt')
+        const selection = 'requirementId studentDetails subjects tuitionType location schedule budget status priority totalMatches views createdAt expiresAt';
+        let rawReqs;
+        if (geo) {
+            const geoNear = (0, geoSearchService_1.buildGeoNearStage)({
+                geo,
+                path: 'location.geoPoint',
+                query,
+            });
+            const rows = await ParentRequirement_1.ParentRequirement.aggregate([
+                geoNear,
+                {
+                    $project: selection.split(' ').reduce((acc, field) => {
+                        acc[field] = 1;
+                        return acc;
+                    }, { distanceMeters: 1 }),
+                },
+            ]);
+            rawReqs = (0, geoSearchService_1.attachDistanceKm)(rows);
+        }
+        else {
+            rawReqs = await ParentRequirement_1.ParentRequirement.find(query)
+                .select(selection)
                 .sort({ createdAt: -1 })
-                .lean(),
-        ]);
+                .lean();
+        }
         let scored = rawReqs.map((r) => ({
             ...r,
             matchScore: calcOnTheFlyScore(r, teacher),
@@ -1108,6 +1312,11 @@ const getAvailableRequirements = async (req, res) => {
         else if (sortBy === 'budget') {
             scored.sort((a, b) => (b.budget?.maxAmount || 0) - (a.budget?.maxAmount || 0));
         }
+        else if (sortBy === 'distance' && geo) {
+            scored.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+        }
+        else if (geo) {
+        }
         else {
         }
         const paginated = scored.slice(skip, skip + limit);
@@ -1118,6 +1327,9 @@ const getAvailableRequirements = async (req, res) => {
             data: {
                 requirements: paginated,
                 pagination: { page, limit, total: finalTotal, totalPages },
+                radiusKm: geo?.radiusKm ?? null,
+                searchCenter: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null,
+                sortedBy: sortBy || (geo ? 'distance' : 'recent'),
             },
         });
     }
@@ -1302,10 +1514,7 @@ const getRequirementById = async (req, res) => {
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
-        const teacher = await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean();
-        if (!teacher) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-        }
+        const teacher = (await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean()) ?? {};
         const id = req.params.id;
         const requirement = await ParentRequirement_1.ParentRequirement.findOne({
             $or: [{ requirementId: id }, { _id: id.match(/^[a-f\d]{24}$/i) ? id : undefined }],
@@ -1354,10 +1563,7 @@ const getRecommendedRequirements = async (req, res) => {
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
-        const teacher = await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean();
-        if (!teacher) {
-            return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-        }
+        const teacher = (await TeacherProfile_1.TeacherProfile.findOne({ userId }).lean()) ?? {};
         const limit = Math.min(20, Math.max(1, parseInt(req.query.limit) || 10));
         const subjectFilter = teacher.teachingDetails?.subjects?.length
             ? { subjects: { $in: teacher.teachingDetails.subjects } }

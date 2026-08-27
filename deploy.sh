@@ -117,21 +117,34 @@ echo ""
 echo "📋 Step 4: Installing Dependencies"
 echo "------------------------------------"
 
-# Clean node_modules and lock files for fresh install
-rm -rf node_modules package-lock.json
+# Clean node_modules for a fresh install.
+# NOTE: package-lock.json is gitignored, so `npm ci` (which requires a lock
+# file) cannot be used here — `npm install` is the correct command.
+rm -rf node_modules
 
-# Install dependencies
-npm ci --production
-log_info "✅ Dependencies installed"
+# devDependencies are required: the production entrypoint is compiled
+# TypeScript, and `tsc` lives in devDependencies.
+npm install --include=dev
+log_info "✅ Dependencies installed (including build toolchain)"
 
-# Step 5: Application Build (if needed)
+# Step 5: Application Build
 echo ""
 echo "📋 Step 5: Building Application"
 echo "-------------------------------"
 
-# If you have a build step, add it here
-# npm run build
+# Compiles src/*.ts -> dist/*.js. PM2 runs dist/index.js (see ecosystem.config.js).
+npm run build
 
+if [ ! -f "dist/index.js" ]; then
+    log_error "Build failed: dist/index.js was not produced."
+    log_info "PM2 is configured to run dist/index.js — refusing to continue."
+    exit 1
+fi
+
+log_info "✅ TypeScript build complete: dist/index.js"
+
+# Drop build-only dependencies now that dist/ exists.
+npm prune --omit=dev
 log_info "✅ Application ready"
 
 # Step 6: PM2 Process Management

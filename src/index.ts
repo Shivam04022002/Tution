@@ -8,7 +8,7 @@ import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 
 import { connectDatabase } from './config/database';
-import { initializeFirebase } from './config/firebase';
+import { initializeFirebase, logFirebaseDiagnostics } from './config/firebase';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
@@ -126,6 +126,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Initialize Firebase
 initializeFirebase();
+// Always surface the (secret-free) Firebase status at boot so operators can see
+// whether push notifications are active without inspecting any credential.
+logFirebaseDiagnostics();
 
 // Routes
 app.use('/api', routes);

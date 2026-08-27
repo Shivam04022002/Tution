@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TeacherProfile = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
+const geoPointSync_1 = require("./geoPointSync");
 const TeacherProfileSchema = new mongoose_1.Schema({
     userId: {
         type: mongoose_1.Schema.Types.ObjectId,
@@ -88,7 +89,7 @@ const TeacherProfileSchema = new mongoose_1.Schema({
         },
         university: {
             type: String,
-            required: true,
+            default: '',
         },
         yearOfCompletion: {
             type: Number,
@@ -198,6 +199,17 @@ const TeacherProfileSchema = new mongoose_1.Schema({
                 required: true,
                 min: -180,
                 max: 180,
+            },
+        },
+        geoPoint: {
+            type: {
+                type: String,
+                enum: ['Point'],
+                default: 'Point',
+            },
+            coordinates: {
+                type: [Number],
+                default: undefined,
             },
         },
         preferredAreas: [{
@@ -367,11 +379,11 @@ const TeacherProfileSchema = new mongoose_1.Schema({
     verificationDocuments: {
         aadhaarCard: {
             type: String,
-            required: true,
+            default: '',
         },
         panCard: {
             type: String,
-            required: true,
+            default: '',
         },
         qualificationDocuments: [{
                 type: String,
@@ -587,9 +599,13 @@ const TeacherProfileSchema = new mongoose_1.Schema({
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
 });
+(0, geoPointSync_1.geoPointSync)(TeacherProfileSchema, {
+    sourcePath: 'locationAvailability.coordinates',
+    targetPath: 'locationAvailability.geoPoint',
+});
 TeacherProfileSchema.index({ userId: 1 });
 TeacherProfileSchema.index({ 'locationAvailability.city': 1 });
-TeacherProfileSchema.index({ 'locationAvailability.coordinates': '2dsphere' });
+TeacherProfileSchema.index({ 'locationAvailability.geoPoint': '2dsphere' });
 TeacherProfileSchema.index({ 'teachingDetails.subjects': 1 });
 TeacherProfileSchema.index({ 'teachingDetails.classes': 1 });
 TeacherProfileSchema.index({ verificationStatus: 1 });
@@ -624,7 +640,7 @@ TeacherProfileSchema.pre('save', function () {
 });
 TeacherProfileSchema.statics.findNearbyTutors = function (latitude, longitude, maxDistance = 10000) {
     return this.find({
-        'locationAvailability.coordinates': {
+        'locationAvailability.geoPoint': {
             $near: {
                 $geometry: {
                     type: 'Point',

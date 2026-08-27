@@ -3,12 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkDuplicate = exports.signup = exports.registerComplete = exports.login = exports.logout = exports.updateProfile = exports.getCurrentUser = exports.verifyOTP = exports.sendOTP = void 0;
+exports.checkDuplicate = exports.signup = exports.registerComplete = exports.login = exports.logout = exports.updateProfile = exports.getCurrentUser = exports.continueWithoutOtp = exports.verifyOTP = exports.sendOTP = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const firebase_1 = require("../config/firebase");
 const User_1 = require("../models/User");
 const ParentRequirement_1 = require("../models/ParentRequirement");
 const TeacherProfile_1 = require("../models/TeacherProfile");
+const emailService_1 = require("../services/emailService");
 const generateToken = (userId) => {
     return jsonwebtoken_1.default.sign({ userId }, process.env.JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRE || '7d',
@@ -24,6 +25,15 @@ const sendOTP = async (req, res) => {
             });
         }
         const existingUser = await User_1.User.findOne({ phoneNumber });
+        const mailServiceUp = await (0, emailService_1.isMailServiceEnabled)('otp_verification');
+        if (!mailServiceUp) {
+            return res.status(200).json({
+                success: true,
+                mailServiceDown: true,
+                message: 'Mail services are down for a while',
+                userExists: !!existingUser,
+            });
+        }
         try {
             await firebase_1.auth.createUser({
                 phoneNumber,
@@ -123,6 +133,10 @@ const verifyOTP = async (req, res) => {
             });
             await user.save();
         }
+        if (user.role === 'staff') {
+            user.lastLogin = new Date();
+            await user.save();
+        }
         const token = generateToken(user._id.toString());
         return res.status(200).json({
             success: true,
@@ -149,6 +163,72 @@ const verifyOTP = async (req, res) => {
     }
 };
 exports.verifyOTP = verifyOTP;
+const continueWithoutOtp = async (req, res) => {
+    try {
+        const { phoneNumber, role } = req.body;
+        if (!phoneNumber) {
+            return res.status(400).json({ success: false, message: 'Phone number is required' });
+        }
+        const mailServiceUp = await (0, emailService_1.isMailServiceEnabled)('otp_verification');
+        if (mailServiceUp) {
+            return res.status(403).json({
+                success: false,
+                message: 'Mail services are available — please verify with OTP.',
+            });
+        }
+        const bypassUid = `bypass_${phoneNumber.replace(/\D/g, '')}`;
+        let user = await User_1.User.findOne({ firebaseUid: bypassUid });
+        if (!user) {
+            if (!role) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Role is required for new users. Please specify parent or teacher.',
+                });
+            }
+            if (!['parent', 'teacher'].includes(role)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid role. Only parent and teacher roles can be created via OTP.',
+                });
+            }
+            user = new User_1.User({
+                firebaseUid: bypassUid,
+                phoneNumber,
+                email: `${phoneNumber}@tuition.app`,
+                role,
+                profile: {
+                    firstName: '',
+                    lastName: '',
+                },
+            });
+            await user.save();
+        }
+        const token = generateToken(user._id.toString());
+        return res.status(200).json({
+            success: true,
+            message: 'Login successful',
+            token,
+            user: {
+                id: user._id,
+                firebaseUid: user.firebaseUid,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                role: user.role,
+                profile: user.profile,
+                profileCompleted: user.profileCompleted,
+                onboardingCompleted: user.onboardingCompleted,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Continue without OTP error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to continue without OTP',
+        });
+    }
+};
+exports.continueWithoutOtp = continueWithoutOtp;
 const getCurrentUser = async (req, res) => {
     try {
         const user = req.user;
@@ -277,6 +357,10 @@ const login = async (req, res) => {
                 message: 'Account is deactivated',
             });
         }
+        if (user.role === 'staff') {
+            user.lastLogin = new Date();
+            await user.save();
+        }
         const token = generateToken(user._id.toString());
         return res.status(200).json({
             success: true,
@@ -310,6 +394,7 @@ const generateRequirementId = () => {
     return `REQ-${timestamp}-${random}`.toUpperCase();
 };
 const registerComplete = async (req, res) => {
+    let createdUserId = null;
     try {
         const { role, fullName, mobileNumber, email, password, parentDetails, studentDetails, tuitionRequirement, locationDetails, budgetDetails, scheduleDetails, tutorPreferences, personalDetails, educationDetails, professionalDetails, teachingDetails, teachingMode, availability, locationPreferences, pricingDetails, } = req.body;
         if (!role || !fullName || !mobileNumber || !email || !password) {
@@ -355,6 +440,7 @@ const registerComplete = async (req, res) => {
             onboardingCompleted: true,
         });
         await user.save();
+        createdUserId = user._id;
         let profileData = null;
         console.log('=== REGISTER-COMPLETE DEBUG ===');
         console.log('studentDetails:', JSON.stringify(studentDetails, null, 2));
@@ -451,21 +537,28 @@ const registerComplete = async (req, res) => {
                 '5-10 Years': 7.5,
                 '10+ Years': 12,
             };
+            const teachingModeArray = Array.isArray(teachingMode)
+                ? teachingMode
+                : teachingMode
+                    ? [teachingMode]
+                    : [];
             let monthlyRate = 0;
             let hourlyRate = 0;
             if (pricingDetails?.pricing === 'Custom Amount') {
                 monthlyRate = parseInt(pricingDetails.customAmount) || 0;
             }
-            else {
-                const range = pricingDetails?.pricing?.replace('₹', '').split('-');
-                if (range && range.length === 2) {
-                    monthlyRate = (parseInt(range[0]) + parseInt(range[1])) / 2;
-                }
-                else if (pricingDetails?.pricing?.includes('10000+')) {
-                    monthlyRate = 10000;
+            else if (pricingDetails?.pricing?.includes('10000+')) {
+                monthlyRate = 10000;
+            }
+            else if (pricingDetails?.pricing) {
+                const clean = pricingDetails.pricing.replace(/₹/g, '').replace(/\s/g, '');
+                const range = clean.split('-').filter(Boolean);
+                if (range.length === 2) {
+                    monthlyRate = ((parseInt(range[0]) || 0) + (parseInt(range[1]) || 0)) / 2;
                 }
             }
-            hourlyRate = Math.round(monthlyRate / 40);
+            monthlyRate = Math.max(1000, monthlyRate);
+            hourlyRate = Math.max(50, Math.round(monthlyRate / 40));
             const teacherProfile = new TeacherProfile_1.TeacherProfile({
                 userId: user._id,
                 basicDetails: {
@@ -490,7 +583,7 @@ const registerComplete = async (req, res) => {
                     classes: teachingDetails?.classes || [],
                     boards: teachingDetails?.boards || [],
                     specialization: teachingDetails?.subjects?.[0] || '',
-                    teachingModes: (teachingMode || []).map((m) => {
+                    teachingModes: teachingModeArray.map((m) => {
                         const modeMap = {
                             'Home Tuition': 'student_home',
                             'Online Tuition': 'online',
@@ -499,7 +592,7 @@ const registerComplete = async (req, res) => {
                         };
                         return modeMap[m] || m.toLowerCase().replace(' ', '_');
                     }),
-                    groupTuitionOption: teachingMode?.includes('Group Tuition') || false,
+                    groupTuitionOption: teachingModeArray.includes('Group Tuition') || false,
                     groupSize: 5,
                     groupRate: 0,
                 },
@@ -507,12 +600,30 @@ const registerComplete = async (req, res) => {
                     address: personalDetails?.address || '',
                     city: personalDetails?.city || '',
                     pincode: personalDetails?.pincode || '',
-                    coordinates: { latitude: 0, longitude: 0 },
+                    coordinates: {
+                        latitude: typeof personalDetails?.latitude === 'number' ? personalDetails.latitude : 0,
+                        longitude: typeof personalDetails?.longitude === 'number' ? personalDetails.longitude : 0,
+                    },
                     preferredAreas: locationPreferences || [],
                     teachingRadius: 10,
                     availableDays: availability?.days || [],
                     availableTimeSlots: availability?.timeSlots || [],
                     vacationMode: false,
+                },
+                discoverability: {
+                    availableForNewStudents: true,
+                    visibleInMarketplace: true,
+                    onlineStatus: 'hybrid',
+                    travelSettings: {
+                        maxTravelDistance: 10,
+                        preferredTravelModes: [],
+                    },
+                    locationCoverage: {
+                        state: personalDetails?.state || personalDetails?.city || '',
+                        city: personalDetails?.city || '',
+                        areas: locationPreferences || [],
+                        pincodes: personalDetails?.pincode ? [personalDetails.pincode] : [],
+                    },
                 },
                 bio: professionalDetails?.bio || '',
                 pricingRevenue: {
@@ -573,6 +684,22 @@ const registerComplete = async (req, res) => {
     }
     catch (error) {
         console.error('Complete registration error:', error);
+        if (createdUserId) {
+            try {
+                await User_1.User.findByIdAndDelete(createdUserId);
+            }
+            catch (rollbackError) {
+                console.error('Failed to roll back partially-created user:', rollbackError);
+            }
+        }
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map((e) => e.message);
+            return res.status(400).json({
+                success: false,
+                message: messages[0] || 'Validation failed',
+                errors: messages,
+            });
+        }
         return res.status(500).json({
             success: false,
             message: 'Failed to create account',

@@ -88,8 +88,9 @@ export declare class MatchingService {
     private static calculateTimingScore;
     private static calculateBonusScore;
     static generateMatchesForRequirement(requirement: IParentRequirement, limit?: number): Promise<MatchResult[]>;
-    static saveMatches(matches: MatchResult[]): Promise<void>;
+    static saveMatches(matches: MatchResult[]): Promise<MatchResult[]>;
     static generateAndSaveForRequirement(requirement: IParentRequirement): Promise<number>;
+    private static notifyNewMatches;
     static expireCompetingMatches(requirementId: mongoose.Types.ObjectId, winnerTeacherId: mongoose.Types.ObjectId): Promise<void>;
     static resetMatchOnWithdrawal(requirementId: mongoose.Types.ObjectId, teacherId: mongoose.Types.ObjectId): Promise<void>;
     static cleanupExpiredMatches(): Promise<number>;

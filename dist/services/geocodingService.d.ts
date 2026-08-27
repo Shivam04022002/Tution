@@ -15,6 +15,8 @@ export interface ReverseGeocodingResult {
     country: string;
     neighborhood?: string;
 }
+export declare function isLocationServiceEnabled(): Promise<boolean>;
+export declare function testApiKey(apiKey: string): Promise<GeocodingResult | null>;
 export declare function geocodeAddress(address: string): Promise<GeocodingResult | null>;
 export declare function reverseGeocode(latitude: number, longitude: number): Promise<ReverseGeocodingResult | null>;
 export declare function geocodePincode(pincode: string): Promise<GeocodingResult | null>;

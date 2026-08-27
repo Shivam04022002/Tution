@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { geoPointSync } from './geoPointSync';
 
 // Teacher Profile Interface
 export interface ITeacherProfile extends Document {
@@ -46,6 +47,13 @@ export interface ITeacherProfile extends Document {
     coordinates: {
       latitude: number;
       longitude: number;
+    };
+    // Derived GeoJSON mirror of `coordinates`, maintained automatically so the
+    // 2dsphere index has a valid [longitude, latitude] point to work with.
+    // Never set this by hand — write `coordinates` and it stays in sync.
+    geoPoint?: {
+      type: 'Point';
+      coordinates: [number, number];
     };
     preferredAreas: string[];
     preferredLocations: Array<{
@@ -337,6 +345,19 @@ const TeacherProfileSchema: Schema = new Schema({
         required: true,
         min: -180,
         max: 180,
+      },
+    },
+    // Derived from `coordinates` by syncGeoPoint below. GeoJSON order is
+    // [longitude, latitude] — the reverse of the human-facing fields above.
+    geoPoint: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number],
+        default: undefined,
       },
     },
     preferredAreas: [{
@@ -730,9 +751,17 @@ const TeacherProfileSchema: Schema = new Schema({
 });
 
 // Indexes for better performance
+// Keeps locationAvailability.geoPoint derived from locationAvailability.coordinates.
+geoPointSync(TeacherProfileSchema, {
+  sourcePath: 'locationAvailability.coordinates',
+  targetPath: 'locationAvailability.geoPoint',
+});
+
 TeacherProfileSchema.index({ userId: 1 });
 TeacherProfileSchema.index({ 'locationAvailability.city': 1 });
-TeacherProfileSchema.index({ 'locationAvailability.coordinates': '2dsphere' });
+// 2dsphere must target the derived GeoJSON point — indexing the raw
+// { latitude, longitude } object silently swaps the two values.
+TeacherProfileSchema.index({ 'locationAvailability.geoPoint': '2dsphere' });
 TeacherProfileSchema.index({ 'teachingDetails.subjects': 1 });
 TeacherProfileSchema.index({ 'teachingDetails.classes': 1 });
 TeacherProfileSchema.index({ verificationStatus: 1 });
@@ -774,7 +803,7 @@ TeacherProfileSchema.pre('save', function() {
 // Static methods
 TeacherProfileSchema.statics.findNearbyTutors = function(latitude: number, longitude: number, maxDistance: number = 10000) {
   return this.find({
-    'locationAvailability.coordinates': {
+    'locationAvailability.geoPoint': {
       $near: {
         $geometry: {
           type: 'Point',

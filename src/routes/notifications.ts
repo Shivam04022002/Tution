@@ -7,9 +7,17 @@ import {
   markAllAsRead,
   deleteNotification,
   bulkDeleteOld,
+  registerDeviceTokenHandler,
+  unregisterDeviceTokenHandler,
 } from '../controllers/notificationController';
 
 const router = express.Router();
+
+// POST   /api/notifications/device-token — register/refresh this device's FCM token
+router.post('/device-token', authenticate, registerDeviceTokenHandler);
+
+// DELETE /api/notifications/device-token — deactivate on sign-out
+router.delete('/device-token', authenticate, unregisterDeviceTokenHandler);
 
 // GET  /api/notifications/unread-count  — lightweight badge poll
 router.get('/unread-count', authenticate, getUnreadCount);

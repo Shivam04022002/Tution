@@ -48,6 +48,10 @@ export interface ITeacherProfile extends Document {
             latitude: number;
             longitude: number;
         };
+        geoPoint?: {
+            type: 'Point';
+            coordinates: [number, number];
+        };
         preferredAreas: string[];
         preferredLocations: Array<{
             area: string;

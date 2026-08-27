@@ -6,4 +6,6 @@ export declare const markAsRead: (req: AuthRequest, res: Response) => Promise<Re
 export declare const markAllAsRead: (req: AuthRequest, res: Response) => Promise<Response<any, Record<string, any>>>;
 export declare const deleteNotification: (req: AuthRequest, res: Response) => Promise<Response<any, Record<string, any>>>;
 export declare const bulkDeleteOld: (req: AuthRequest, res: Response) => Promise<Response<any, Record<string, any>>>;
+export declare const registerDeviceTokenHandler: (req: AuthRequest, res: Response) => Promise<Response<any, Record<string, any>>>;
+export declare const unregisterDeviceTokenHandler: (req: AuthRequest, res: Response) => Promise<Response<any, Record<string, any>>>;
 //# sourceMappingURL=notificationController.d.ts.map

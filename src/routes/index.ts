@@ -31,6 +31,8 @@ import campaignRoutes from './campaigns';
 import healthRoutes from './health';
 import auditRoutes from './audit';
 import backupRoutes from './backup';
+import courseRoutes from './courses';
+import adminCourseRoutes from './adminCourses';
 
 const router = express.Router();
 
@@ -80,6 +82,8 @@ router.use('/subscriptions', subscriptionRoutes);
 router.use('/credits', creditRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/kyc', kycRoutes);
+router.use('/courses', courseRoutes);
+router.use('/admin/courses', adminCourseRoutes);
 router.use('/admin/campaigns', campaignRoutes);
 router.use('/admin/backup', backupRoutes);
 

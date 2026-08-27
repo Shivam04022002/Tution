@@ -2,6 +2,11 @@ import { Response } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../middleware/auth';
 import { Notification } from '../models/Notification';
+import {
+  registerDeviceToken,
+  deactivateDeviceToken,
+  isPushEnabled,
+} from '../services/pushService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/notifications
@@ -167,5 +172,85 @@ export const bulkDeleteOld = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('bulkDeleteOld error:', error);
     return res.status(500).json({ success: false, message: 'Failed to bulk delete.' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/notifications/device-token
+// Register or refresh this device's FCM token for the authenticated user.
+// The owner is always taken from the session — never from the request body.
+// ─────────────────────────────────────────────────────────────────────────────
+export const registerDeviceTokenHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    const { token, platform, deviceId, appVersion } = req.body ?? {};
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, message: 'A device token is required' });
+    }
+
+    if (platform && !['android', 'ios', 'web'].includes(platform)) {
+      return res.status(400).json({ success: false, message: 'Invalid platform' });
+    }
+
+    const record = await registerDeviceToken({
+      userId,
+      token,
+      platform,
+      deviceId,
+      appVersion,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Device registered for notifications',
+      data: {
+        // The token itself is never echoed back.
+        platform: record.platform,
+        isActive: record.isActive,
+        lastSeenAt: record.lastSeenAt,
+        pushEnabled: isPushEnabled(),
+      },
+    });
+  } catch (error: any) {
+    console.error('Register device token error:', error?.message ?? error);
+    return res.status(400).json({
+      success: false,
+      message: error?.message || 'Failed to register device token',
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/notifications/device-token
+// Deactivate this device's token, e.g. on sign-out.
+// ─────────────────────────────────────────────────────────────────────────────
+export const unregisterDeviceTokenHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    const token = (req.body?.token ?? req.query?.token) as string | undefined;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, message: 'A device token is required' });
+    }
+
+    // Scoped to the caller, so one account cannot disable another's device.
+    const removed = await deactivateDeviceToken(userId, token);
+
+    return res.status(200).json({
+      success: true,
+      message: removed ? 'Device unregistered' : 'No matching device token for this account',
+    });
+  } catch (error: any) {
+    console.error('Unregister device token error:', error?.message ?? error);
+    return res.status(500).json({ success: false, message: 'Failed to unregister device token' });
   }
 };
