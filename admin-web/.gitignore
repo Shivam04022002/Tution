@@ -11,3 +11,22 @@ dist-ssr
 # built on the server with `npm ci`, which requires the lockfile, so re-include
 # it for this directory only.
 !package-lock.json
+
+# Private keys, certificates and keystores
+# Redundant with the repository root's rules, but kept here so the directory
+# stays protected if it is ever extracted into a repository of its own.
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+*.p8
+*.der
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*

@@ -75,3 +75,22 @@ public/uploads
 # Misc
 *.bak
 *.orig
+
+# Private keys, certificates and keystores
+# Nothing key-shaped may ever enter this repository. No tracked file matches
+# these patterns, so adding them shadows nothing that already exists.
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+*.p8
+*.der
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
