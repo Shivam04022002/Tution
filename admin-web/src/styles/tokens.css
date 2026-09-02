@@ -1,0 +1,76 @@
+/*
+ * Design tokens mirrored from tuition-mobile/src/theme so the web console and
+ * the mobile admin app read as one product. Values are copied, not reinvented.
+ */
+:root {
+  /* Brand — logo purple */
+  --c-primary: #2D0A7D;
+  --c-primary-dark: #1A0550;
+  --c-primary-mid: #3D1299;
+  --c-primary-light: #5B21B6;
+
+  --c-secondary: #5B21B6;
+  --c-secondary-light: #7C3AED;
+
+  --c-pink: #EC4899;
+  --c-accent: #F59E0B;
+
+  /* Surfaces */
+  --c-bg: #F8FAFC;
+  --c-bg-2: #F1F5F9;
+  --c-bg-3: #E2E8F0;
+  --c-card: #FFFFFF;
+
+  /* Text */
+  --c-text: #0F172A;
+  --c-text-2: #64748B;
+  --c-text-3: #94A3B8;
+  --c-text-inv: #FFFFFF;
+
+  /* Lines */
+  --c-border: #E2E8F0;
+  --c-border-dark: #CBD5E1;
+  --c-border-light: #F1F5F9;
+
+  /* Status */
+  --c-success: #10B981;
+  --c-success-bg: #D1FAE5;
+  --c-error: #EF4444;
+  --c-error-bg: #FEE2E2;
+  --c-warning: #F59E0B;
+  --c-warning-bg: #FEF3C7;
+  --c-info: #3B82F6;
+  --c-info-bg: #DBEAFE;
+
+  /* Spacing — 4px base, same scale as the mobile theme */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --sh-sm: 0 1px 2px rgba(45, 10, 125, 0.06);
+  --sh-md: 0 2px 8px rgba(45, 10, 125, 0.08);
+  --sh-lg: 0 12px 32px rgba(45, 10, 125, 0.14);
+
+  /* Layout */
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 64px;
+  --header-h: 56px;
+
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}

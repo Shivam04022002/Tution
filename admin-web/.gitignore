@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+.env
+.env.local
+.env.*.local
+*.local
+.vite
+
+# The repository root ignores package-lock.json for the backend. The console is
+# built on the server with `npm ci`, which requires the lockfile, so re-include
+# it for this directory only.
+!package-lock.json
