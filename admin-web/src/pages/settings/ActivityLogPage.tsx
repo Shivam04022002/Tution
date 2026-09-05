@@ -142,16 +142,7 @@ export function ActivityLogPage() {
             </Button>
           }
         >
-          <div className="grid grid-2">
-            <div>
-              <p className="label mb-4">Before</p>
-              <JsonBlock value={inspecting.oldValue} />
-            </div>
-            <div>
-              <p className="label mb-4">After</p>
-              <JsonBlock value={inspecting.newValue} />
-            </div>
-          </div>
+          <DiffTable oldValue={inspecting.oldValue} newValue={inspecting.newValue} />
 
           {inspecting.userAgent && (
             <p className="field-hint mt-6">
@@ -164,22 +155,93 @@ export function ActivityLogPage() {
   );
 }
 
-function JsonBlock({ value }: { value: unknown }) {
+/** `verificationStatus` → `Verification status` */
+function humanizeField(key: string): string {
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+  const lower = spaced.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function isPlainValue(value: unknown): value is string | number | boolean | null | undefined {
+  return value === null || value === undefined || typeof value !== 'object';
+}
+
+function DiffCell({ value }: { value: unknown }) {
+  if (value === undefined || value === null || value === '') return <span className="muted">—</span>;
+  if (isPlainValue(value)) return <span className="mono">{String(value)}</span>;
+
   return (
     <pre
       className="mono"
       style={{
-        padding: 'var(--s-3)',
+        padding: 'var(--s-2)',
         background: 'var(--c-bg-2)',
         borderRadius: 'var(--r-md)',
-        fontSize: 11.5,
-        lineHeight: 1.5,
+        fontSize: 11,
+        lineHeight: 1.45,
         overflowX: 'auto',
         margin: 0,
-        maxHeight: 300,
+        maxWidth: 260,
       }}
     >
-      {value ? JSON.stringify(value, null, 2) : '—'}
+      {JSON.stringify(value, null, 2)}
     </pre>
+  );
+}
+
+/**
+ * Renders only the fields that actually differ between `oldValue` and
+ * `newValue` — a raw side-by-side JSON dump is unreadable for a
+ * non-technical admin, so this reduces each entry to a "field changed from X
+ * to Y" table instead.
+ */
+function DiffTable({
+  oldValue,
+  newValue,
+}: {
+  oldValue?: Record<string, any> | null;
+  newValue?: Record<string, any> | null;
+}) {
+  if (!oldValue && !newValue) {
+    return <p className="text-sm muted">No before/after details were recorded for this action.</p>;
+  }
+
+  const keys = Array.from(new Set([...Object.keys(oldValue ?? {}), ...Object.keys(newValue ?? {})])).sort();
+
+  const changed = keys.filter((key) => {
+    const before = oldValue?.[key];
+    const after = newValue?.[key];
+    return JSON.stringify(before) !== JSON.stringify(after);
+  });
+
+  if (changed.length === 0) {
+    return <p className="text-sm muted">No fields changed.</p>;
+  }
+
+  return (
+    <TableWrap>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Before</th>
+            <th>After</th>
+          </tr>
+        </thead>
+        <tbody>
+          {changed.map((key) => (
+            <tr key={key}>
+              <td className="cell-primary">{humanizeField(key)}</td>
+              <td>
+                <DiffCell value={oldValue?.[key]} />
+              </td>
+              <td>
+                <DiffCell value={newValue?.[key]} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </TableWrap>
   );
 }
