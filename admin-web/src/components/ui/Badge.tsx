@@ -71,6 +71,14 @@ export function toneForStatus(status: string | undefined | null): BadgeTone {
   return STATUS_TONES[String(status).toLowerCase()] ?? 'neutral';
 }
 
+/** True only for values in the shared status vocabulary above — lets callers
+ * tell a real status ("verified", "pending") apart from free text that
+ * happens to be a plain lowercase word, so they don't badge everything. */
+export function isKnownStatus(status: string | undefined | null): boolean {
+  if (!status) return false;
+  return Object.prototype.hasOwnProperty.call(STATUS_TONES, String(status).toLowerCase());
+}
+
 /** Turns `under_review` into `Under review` without inventing new wording. */
 export function humanizeStatus(status: string | undefined | null): string {
   if (!status) return '—';

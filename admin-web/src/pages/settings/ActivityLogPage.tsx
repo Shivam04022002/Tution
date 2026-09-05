@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import * as usersApi from '../../api/users';
 import { Card } from '../../components/ui/Primitives';
-import { Badge } from '../../components/ui/Badge';
+import { Badge, isKnownStatus, StatusBadge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { Toolbar } from '../../components/common/ListToolbar';
@@ -168,6 +168,14 @@ function isPlainValue(value: unknown): value is string | number | boolean | null
 
 function DiffCell({ value }: { value: unknown }) {
   if (value === undefined || value === null || value === '') return <span className="muted">—</span>;
+  if (typeof value === 'boolean') {
+    return (
+      <Badge tone={value ? 'success' : 'neutral'} dot>
+        {value ? 'Yes' : 'No'}
+      </Badge>
+    );
+  }
+  if (typeof value === 'string' && isKnownStatus(value)) return <StatusBadge status={value} />;
   if (isPlainValue(value)) return <span className="mono">{String(value)}</span>;
 
   return (
