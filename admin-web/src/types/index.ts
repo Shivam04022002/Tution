@@ -752,3 +752,13 @@ export interface LocationConfig {
   hasApiKey: boolean;
   updatedAt: string | null;
 }
+
+/** `GET /api/admin/aws-config` — the secret access key is never returned, only a flag. */
+export interface AwsS3ConfigData {
+  isActive: boolean;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  hasSecretKey: boolean;
+  updatedAt: string | null;
+}

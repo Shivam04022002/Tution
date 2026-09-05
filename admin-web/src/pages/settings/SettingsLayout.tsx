@@ -5,6 +5,7 @@ const SECTIONS = [
   { to: '/settings', label: 'Profile', end: true },
   { to: '/settings/email', label: 'Email (SMTP)', end: false },
   { to: '/settings/location', label: 'Location services', end: false },
+  { to: '/settings/aws', label: 'AWS / Storage', end: false },
   { to: '/settings/activity', label: 'Activity log', end: false },
   { to: '/settings/import', label: 'Data import', end: false },
 ];

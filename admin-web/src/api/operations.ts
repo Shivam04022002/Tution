@@ -1,5 +1,6 @@
 import { request, requestData, uploadFile } from './client';
 import type {
+  AwsS3ConfigData,
   Campaign,
   CampaignsSummary,
   DemandAnalytics,
@@ -285,5 +286,33 @@ export function testLocationConfig(apiKey?: string) {
   return request<{ success: boolean; message: string; data?: any }>('/admin/location-config/test', {
     method: 'POST',
     body: apiKey ? { apiKey } : {},
+  });
+}
+
+export function getAwsConfig() {
+  return requestData<AwsS3ConfigData>('/admin/aws-config');
+}
+
+export function updateAwsConfig(payload: Record<string, any>) {
+  return request<{ success: boolean; message: string }>('/admin/aws-config', {
+    method: 'PUT',
+    body: payload,
+  });
+}
+
+/**
+ * `POST /admin/aws-config/test` verifies credentials with a HeadBucket call.
+ * Passing `secretAccessKey` tests an unsaved value; omitting it falls back to
+ * the stored one.
+ */
+export function testAwsConfig(payload: {
+  region?: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey?: string;
+}) {
+  return request<{ success: boolean; message: string }>('/admin/aws-config/test', {
+    method: 'POST',
+    body: payload,
   });
 }

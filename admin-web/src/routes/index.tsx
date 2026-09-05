@@ -103,6 +103,9 @@ const EmailSettings = lazy(() =>
 const LocationSettings = lazy(() =>
   import('../pages/settings/LocationSettings').then((m) => ({ default: m.LocationSettings }))
 );
+const AwsSettings = lazy(() =>
+  import('../pages/settings/AwsSettings').then((m) => ({ default: m.AwsSettings }))
+);
 const ActivityLogPage = lazy(() =>
   import('../pages/settings/ActivityLogPage').then((m) => ({ default: m.ActivityLogPage }))
 );
@@ -191,6 +194,7 @@ export function AppRoutes() {
               <Route index element={<ProfileSettings />} />
               <Route path="email" element={<EmailSettings />} />
               <Route path="location" element={<LocationSettings />} />
+              <Route path="aws" element={<AwsSettings />} />
               <Route path="activity" element={<ActivityLogPage />} />
               <Route path="import" element={<DataImportPage />} />
             </Route>
