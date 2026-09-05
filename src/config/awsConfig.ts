@@ -8,6 +8,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { AwsS3Config } from '../models/AwsS3Config';
+import { decrypt } from '../utils/encryption';
 
 /**
  * AWS S3 configuration.
@@ -32,6 +34,36 @@ export const getSignedUrlTtlSeconds = (): number => {
 
 export const isS3Configured = (): boolean =>
   Boolean(awsConfig.accessKeyId && awsConfig.secretAccessKey && awsConfig.s3Bucket);
+
+/**
+ * Hydrate `awsConfig` from the admin-managed `AwsS3Config` document, falling
+ * back to the AWS_* env vars if no active document is saved. Call this once
+ * at startup (see src/index.ts) and again immediately after an admin saves
+ * new credentials (see awsConfigController.updateAwsConfig) — there is no
+ * need to restart the process for a saved config change to take effect.
+ */
+export const refreshAwsConfigFromDb = async (): Promise<void> => {
+  try {
+    const saved = await AwsS3Config.findOne();
+
+    if (saved && saved.isActive && saved.accessKeyId && saved.secretAccessKeyEncrypted && saved.bucket) {
+      awsConfig.accessKeyId = saved.accessKeyId;
+      awsConfig.secretAccessKey = decrypt(saved.secretAccessKeyEncrypted);
+      awsConfig.s3Bucket = saved.bucket;
+      awsConfig.region = saved.region || awsConfig.region;
+    } else {
+      awsConfig.accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
+      awsConfig.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || '';
+      awsConfig.s3Bucket = process.env.AWS_S3_BUCKET || 'tuition-app-media';
+      awsConfig.region = process.env.AWS_REGION || 'ap-south-1';
+    }
+
+    // Force the next getS3Client() call to rebuild with the current credentials.
+    cachedClient = null;
+  } catch (error) {
+    console.error('refreshAwsConfigFromDb error:', error);
+  }
+};
 
 let cachedClient: S3Client | null = null;
 

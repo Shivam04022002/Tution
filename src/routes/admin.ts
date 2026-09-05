@@ -13,6 +13,7 @@ import {
   rejectTeacher,
   blockTeacher,
   unblockTeacher,
+  getActivityLog,
 } from '../controllers/adminController';
 import {
   importParentsExcel,
@@ -76,6 +77,7 @@ import {
   getAllTransactions,
 } from '../controllers/adminCreditsController';
 import { getSmtpConfig, updateSmtpConfig, testSmtpConfig } from '../controllers/smtpConfigController';
+import { getAwsConfig, updateAwsConfig, testAwsConfig } from '../controllers/awsConfigController';
 import { getLocationConfig, updateLocationConfig, testLocationConfig } from '../controllers/locationConfigController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -103,10 +105,18 @@ router.use(authenticate, authorize('admin'));
 
 router.get('/stats', getPlatformStats);
 
+// Activity log (read-only view of the AuditLog collection)
+router.get('/activity', getActivityLog);
+
 // SMTP configuration
 router.get('/smtp-config', getSmtpConfig);
 router.put('/smtp-config', updateSmtpConfig);
 router.post('/smtp-config/test', testSmtpConfig);
+
+// AWS S3 configuration (course video storage)
+router.get('/aws-config', getAwsConfig);
+router.put('/aws-config', updateAwsConfig);
+router.post('/aws-config/test', testAwsConfig);
 
 // Location services configuration
 router.get('/location-config', getLocationConfig);

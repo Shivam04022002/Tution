@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 
 import { connectDatabase } from './config/database';
+import { refreshAwsConfigFromDb } from './config/awsConfig';
 import { initializeFirebase, logFirebaseDiagnostics } from './config/firebase';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -165,7 +166,11 @@ const startServer = async () => {
   try {
     // Connect to database
     await connectDatabase();
-    
+
+    // Hydrate AWS S3 credentials from the admin-managed config (falls back
+    // to AWS_* env vars if nothing has been saved via the admin panel yet).
+    await refreshAwsConfigFromDb();
+
     // Run automatic system bootstrap (admin & staff accounts)
     console.log('🔧 Running automatic system bootstrap...');
     const { bootstrapSystem } = await import('./scripts/bootstrapSystem');

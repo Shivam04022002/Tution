@@ -698,3 +698,55 @@ export const unblockTeacher = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+
+// ─────────────────────────────────────────────
+// GET /api/admin/activity
+// Query: action, entityType, page, limit
+// Read-only paginated view of the AuditLog collection.
+// ─────────────────────────────────────────────
+export const getActivityLog = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      action,
+      entityType,
+      page = '1',
+      limit = '25',
+    } = req.query;
+
+    const filter: Record<string, any> = {};
+    if (action) filter.action = action;
+    if (entityType) filter.entityType = entityType;
+
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [entries, total] = await Promise.all([
+      AuditLog.find(filter)
+        .populate('adminId', 'email role profile.firstName profile.lastName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: entries,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error('getActivityLog error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch activity log',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
