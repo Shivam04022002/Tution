@@ -19,15 +19,20 @@ const PLAN_CREDITS: Record<string, number> = {
 // Helper: get teacher's active subscription + credit balance
 // ─────────────────────────────────────────────────────────────────────────────
 async function getTeacherCreditState(userId: mongoose.Types.ObjectId) {
+  // A teacher who has signed up but not yet completed onboarding has no
+  // TeacherProfile — that is a valid, zero-credits-used state, not an
+  // error. Falling through with a null profile instead of 404ing here
+  // keeps the "Credits" screen working for every fresh account.
   const teacherProfile = await TeacherProfile.findOne({ userId });
-  if (!teacherProfile) return null;
 
-  const subscription = await TeacherSubscription.findOne({
-    teacherId: teacherProfile._id,
-    status: 'active',
-  });
+  const subscription = teacherProfile
+    ? await TeacherSubscription.findOne({
+        teacherId: teacherProfile._id,
+        status: 'active',
+      })
+    : null;
 
-  const planName = subscription?.planName || teacherProfile.subscription?.currentPlan || 'free';
+  const planName = subscription?.planName || teacherProfile?.subscription?.currentPlan || 'free';
   const totalCredits = PLAN_CREDITS[planName] ?? 5;
   const isUnlimited = totalCredits === -1;
 
@@ -57,9 +62,6 @@ export const getCreditBalance = async (req: AuthRequest, res: Response) => {
     }
 
     const state = await getTeacherCreditState(req.user._id);
-    if (!state) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-    }
 
     return res.status(200).json({
       success: true,
@@ -92,28 +94,30 @@ export const getCreditHistory = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
+    // Same zero-state reasoning as getTeacherCreditState: no TeacherProfile
+    // yet just means no transactions have ever been recorded — return an
+    // empty page instead of 404ing.
     const teacherProfile = await TeacherProfile.findOne({ userId: req.user._id });
-    if (!teacherProfile) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-    }
 
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
     const type = req.query.type as string;
 
-    const filter: any = { teacherId: teacherProfile._id };
-    if (type && ['CREDIT_GRANTED', 'LEAD_UNLOCK', 'CREDIT_REFUND', 'BONUS_CREDIT', 'PLAN_UPGRADE'].includes(type)) {
+    const filter: any = teacherProfile ? { teacherId: teacherProfile._id } : null;
+    if (filter && type && ['CREDIT_GRANTED', 'LEAD_UNLOCK', 'CREDIT_REFUND', 'BONUS_CREDIT', 'PLAN_UPGRADE'].includes(type)) {
       filter.type = type;
     }
 
-    const [transactions, total] = await Promise.all([
-      CreditTransaction.find(filter)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      CreditTransaction.countDocuments(filter),
-    ]);
+    const [transactions, total] = filter
+      ? await Promise.all([
+          CreditTransaction.find(filter)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean(),
+          CreditTransaction.countDocuments(filter),
+        ])
+      : [[], 0];
 
     return res.status(200).json({
       success: true,
@@ -153,9 +157,10 @@ export const unlockLead = async (req: AuthRequest, res: Response) => {
     }
 
     const state = await getTeacherCreditState(req.user._id);
-    if (!state) {
+    if (!state.teacherProfile) {
       return res.status(404).json({ success: false, message: 'Teacher profile not found' });
     }
+    const teacherProfile = state.teacherProfile;
 
     // Check subscription active
     if (!state.subscription || state.subscription.status !== 'active') {
@@ -164,7 +169,7 @@ export const unlockLead = async (req: AuthRequest, res: Response) => {
 
     // Check if already unlocked
     const existingUnlock = await LeadUnlock.findOne({
-      tutorId: state.teacherProfile._id,
+      tutorId: teacherProfile._id,
       requirementId: requirementId,
       unlockStatus: { $in: ['active', 'expired'] },
     });
@@ -206,7 +211,7 @@ export const unlockLead = async (req: AuthRequest, res: Response) => {
     }
 
     // Check requirement is not hidden
-    if (state.teacherProfile.hiddenRequirements?.includes(requirement._id)) {
+    if (teacherProfile.hiddenRequirements?.includes(requirement._id)) {
       return res.status(400).json({ success: false, message: 'Cannot unlock a hidden requirement' });
     }
 
@@ -230,7 +235,7 @@ export const unlockLead = async (req: AuthRequest, res: Response) => {
     // Create LeadUnlock record
     const leadUnlock = await LeadUnlock.create({
       requirementId: requirement._id,
-      tutorId: state.teacherProfile._id,
+      tutorId: teacherProfile._id,
       parentId: parentUser?._id || req.user._id,
       unlockId,
       paymentDetails: {
@@ -248,7 +253,7 @@ export const unlockLead = async (req: AuthRequest, res: Response) => {
     // Create credit transaction
     await CreditTransaction.create({
       transactionId: '',
-      teacherId: state.teacherProfile._id,
+      teacherId: teacherProfile._id,
       userId: req.user._id,
       type: 'LEAD_UNLOCK',
       amount: -1,

@@ -185,19 +185,23 @@ export const getCurrentSubscription = async (req: AuthRequest, res: Response) =>
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
+    // A teacher who has signed up but not yet completed onboarding has no
+    // TeacherProfile — that is a valid, zero-subscription state, not an
+    // error. Returning 404 here broke the "Free Plan" screen for every
+    // fresh account, so fall through with a null profile and report the
+    // default free plan instead.
     const teacherProfile = await TeacherProfile.findOne({ userId: req.user._id });
-    if (!teacherProfile) {
-      return res.status(404).json({ success: false, message: 'Teacher profile not found' });
-    }
 
     // Find active subscription
-    const subscription = await TeacherSubscription.findOne({
-      teacherId: teacherProfile._id,
-      status: 'active',
-    }).populate('planId').lean();
+    const subscription = teacherProfile
+      ? await TeacherSubscription.findOne({
+          teacherId: teacherProfile._id,
+          status: 'active',
+        }).populate('planId').lean()
+      : null;
 
     // Get the plan limits
-    const planName = subscription?.planName || teacherProfile.subscription?.currentPlan || 'free';
+    const planName = subscription?.planName || teacherProfile?.subscription?.currentPlan || 'free';
     await ensurePlansSeeded();
     const plan = await SubscriptionPlan.findOne({ name: planName as any, isActive: true }).lean();
 
