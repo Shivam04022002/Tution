@@ -6,6 +6,7 @@ import { User } from '../models/User';
 import { AuthRequest } from '../middleware/auth';
 import { AuditLog } from '../models/AuditLog';
 import { BlockedTime } from '../models/BlockedTime';
+import { hasActiveSubscription } from '../services/parentSubscriptionService';
 import {
   sendNotification,
   notifyContactRequestReceived,
@@ -62,6 +63,16 @@ export const createContactRequest = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({
         success: false,
         message: 'Authentication required',
+      });
+    }
+
+    // Admins are exempt (support/testing); the gate applies to parent-initiated
+    // contact only.
+    if (req.user?.role === 'parent' && !(await hasActiveSubscription(parentId))) {
+      return res.status(403).json({
+        success: false,
+        code: 'SUBSCRIPTION_REQUIRED',
+        message: 'An active subscription is required to contact tutors.',
       });
     }
 
@@ -183,6 +194,16 @@ export const createDemoRequest = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({
         success: false,
         message: 'Authentication required',
+      });
+    }
+
+    // Admins are exempt (support/testing); the gate applies to parent-initiated
+    // contact only.
+    if (req.user?.role === 'parent' && !(await hasActiveSubscription(parentId))) {
+      return res.status(403).json({
+        success: false,
+        code: 'SUBSCRIPTION_REQUIRED',
+        message: 'An active subscription is required to contact tutors.',
       });
     }
 
