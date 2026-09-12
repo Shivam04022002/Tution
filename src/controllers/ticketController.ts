@@ -1,7 +1,41 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import Ticket, { TicketStatus, TicketPriority, TicketCategory } from '../models/Ticket';
+import path from 'path';
+import Ticket, { ITicket, TicketStatus, TicketPriority, TicketCategory } from '../models/Ticket';
 import { User } from '../models/User';
+import { isS3Configured, uploadFileToS3, createSignedPlaybackUrl, removeTempFile } from '../config/awsConfig';
+
+/** tickets/{userId}/{timestamp}_{sanitized-name} — mirrors buildCourseVideoKey's pattern. */
+function buildTicketAttachmentKey(userId: string, originalFileName: string): string {
+  const ext = (path.extname(originalFileName) || '').toLowerCase();
+  const base = path
+    .basename(originalFileName, path.extname(originalFileName))
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 60) || 'attachment';
+
+  return `tickets/${userId}/${Date.now()}_${base}${ext}`;
+}
+
+/**
+ * Attachments are stored as private S3 objects, never a public URL — this
+ * swaps the stored key for a short-lived signed URL on the way out, same
+ * pattern as course lesson videos.
+ */
+async function attachSignedAttachmentUrl(ticket: ITicket | Record<string, any>): Promise<any> {
+  const plain = typeof (ticket as any).toObject === 'function' ? (ticket as any).toObject() : ticket;
+  const { attachmentKey, ...rest } = plain;
+  if (!attachmentKey) return rest;
+
+  try {
+    const { url } = await createSignedPlaybackUrl({
+      key: attachmentKey,
+      fileName: rest.attachmentName,
+    });
+    return { ...rest, attachmentUrl: url };
+  } catch {
+    return rest;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Types
@@ -202,7 +236,7 @@ export const getTicketById = async (req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    res.status(200).json({ success: true, data: ticket });
+    res.status(200).json({ success: true, data: await attachSignedAttachmentUrl(ticket) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || 'Failed to fetch ticket' });
   }
@@ -222,9 +256,11 @@ export const createTicket = async (req: AuthenticatedRequest, res: Response): Pr
     }
 
     const { category, priority, subject, description } = req.body;
+    const attachment = req.file;
 
     // Validate required fields
     if (!category || !subject || !description) {
+      if (attachment) removeTempFile(attachment.path);
       res.status(400).json({ success: false, message: 'Category, subject, and description are required' });
       return;
     }
@@ -232,8 +268,29 @@ export const createTicket = async (req: AuthenticatedRequest, res: Response): Pr
     // Get user details
     const user = await User.findById(userId).lean();
     if (!user) {
+      if (attachment) removeTempFile(attachment.path);
       res.status(404).json({ success: false, message: 'User not found' });
       return;
+    }
+
+    let attachmentKey: string | undefined;
+    let attachmentName: string | undefined;
+
+    if (attachment) {
+      if (!isS3Configured()) {
+        removeTempFile(attachment.path);
+        res.status(503).json({ success: false, message: 'Attachment storage is not configured. Contact the platform administrator.' });
+        return;
+      }
+
+      attachmentKey = buildTicketAttachmentKey(userId, attachment.originalname);
+      attachmentName = attachment.originalname;
+      await uploadFileToS3({
+        filePath: attachment.path,
+        key: attachmentKey,
+        contentType: attachment.mimetype,
+      });
+      removeTempFile(attachment.path);
     }
 
     // Create ticket
@@ -248,6 +305,8 @@ export const createTicket = async (req: AuthenticatedRequest, res: Response): Pr
       priority: priority || 'medium',
       subject,
       description,
+      attachmentKey,
+      attachmentName,
       status: 'open',
       messages: [],
     });
@@ -257,9 +316,10 @@ export const createTicket = async (req: AuthenticatedRequest, res: Response): Pr
     res.status(201).json({
       success: true,
       message: 'Ticket created successfully',
-      data: ticket,
+      data: await attachSignedAttachmentUrl(ticket),
     });
   } catch (error: any) {
+    if (req.file) removeTempFile(req.file.path);
     res.status(500).json({ success: false, message: error.message || 'Failed to create ticket' });
   }
 };

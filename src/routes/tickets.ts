@@ -1,4 +1,6 @@
 import express from 'express';
+import multer from 'multer';
+import fs from 'fs';
 import {
   getTickets,
   getTicketById,
@@ -18,6 +20,33 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticate);
 
+const TEMP_UPLOAD_DIR = 'uploads/temp/';
+
+// Multer's disk storage does not create the destination, so make sure it exists.
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    fs.mkdir(TEMP_UPLOAD_DIR, { recursive: true }, (err) => cb(err, TEMP_UPLOAD_DIR));
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, 'ticket-attachment-' + uniqueSuffix);
+  },
+});
+
+const ALLOWED_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+const attachmentUpload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_ATTACHMENT_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, WEBP images or PDF files are allowed.'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }, // 10 MB
+});
+
 // Get tickets list
 router.get('/', getTickets);
 
@@ -27,8 +56,8 @@ router.get('/stats', getTicketStats);
 // Get single ticket
 router.get('/:id', getTicketById);
 
-// Create new ticket
-router.post('/', createTicket);
+// Create new ticket (optional single "attachment" file field)
+router.post('/', attachmentUpload.single('attachment'), createTicket);
 
 // Reply to ticket
 router.post('/:id/reply', replyTicket);

@@ -434,15 +434,17 @@ export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
       }
     });
 
-    // Handle file uploads if present
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    if (files?.profilePicture?.[0]) {
+    // Handle file upload if present. The route registers
+    // upload.single('profilePicture'), which populates req.file (singular) —
+    // not req.files — so reading req.files here always missed the upload.
+    const profilePictureFile = req.file;
+    if (profilePictureFile) {
       // Import centralized services
       const { uploadMulterFile, generateS3Key, generateCloudFrontUrl } = await import('../services/s3Service');
       const { validateFile } = await import('../services/fileValidationService');
 
       // Validate file using centralized validation service
-      const validation = validateFile(files.profilePicture[0], 'profile-image');
+      const validation = validateFile(profilePictureFile, 'profile-image');
       if (!validation.isValid) {
         return res.status(400).json({
           success: false,
@@ -450,8 +452,8 @@ export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
         });
       }
 
-      const s3Key = generateS3Key('profile-images', req.user?.firebaseUid || 'unknown', files.profilePicture[0].originalname);
-      await uploadMulterFile(files.profilePicture[0], { key: s3Key, contentType: files.profilePicture[0].mimetype });
+      const s3Key = generateS3Key('profile-images', req.user?.firebaseUid || 'unknown', profilePictureFile.originalname);
+      await uploadMulterFile(profilePictureFile, { key: s3Key, contentType: profilePictureFile.mimetype });
       updateData['basicDetails.profilePhoto'] = generateCloudFrontUrl(s3Key);
     }
 
@@ -1164,12 +1166,14 @@ export const updateAvailability = async (req: AuthRequest, res: Response) => {
       vacationMode,
     } = req.body;
 
-    // Validation
-    if (!availableDays || availableDays.length === 0) {
+    // This endpoint supports partial updates (e.g. toggling a single day, or
+    // editing one time slot) — only validate a field when the caller is
+    // actually touching it, instead of requiring every field on every call.
+    if (availableDays !== undefined && availableDays.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one active day is required' });
     }
 
-    if (!customTimeSlots || customTimeSlots.length === 0) {
+    if (customTimeSlots !== undefined && customTimeSlots.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one time slot is required' });
     }
 

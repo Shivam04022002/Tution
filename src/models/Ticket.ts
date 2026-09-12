@@ -35,6 +35,8 @@ export interface ITicket extends Document {
   priority: TicketPriority;
   subject: string;
   description: string;
+  attachmentKey?: string;
+  attachmentName?: string;
   status: TicketStatus;
   assignedTo?: mongoose.Types.ObjectId;
   assignedToName?: string;
@@ -84,6 +86,8 @@ const TicketSchema = new Schema<ITicket>(
     },
     subject: { type: String, required: true, maxlength: 200 },
     description: { type: String, required: true, maxlength: 2000 },
+    attachmentKey: { type: String },
+    attachmentName: { type: String },
     status: {
       type: String,
       enum: ['open', 'in_progress', 'resolved', 'closed'],

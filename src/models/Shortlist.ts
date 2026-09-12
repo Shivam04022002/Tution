@@ -5,7 +5,7 @@ export interface IShortlist extends Document {
   parentId: mongoose.Types.ObjectId;
   teacherId: mongoose.Types.ObjectId;
   teacherProfileId: mongoose.Types.ObjectId;
-  requirementId: mongoose.Types.ObjectId;
+  requirementId?: mongoose.Types.ObjectId;
   className?: string;
   notes?: string;
   matchScore?: number;
@@ -39,7 +39,9 @@ const ShortlistSchema: Schema = new Schema({
   requirementId: {
     type: Schema.Types.ObjectId,
     ref: 'ParentRequirement',
-    required: true,
+    // Optional: a tutor can be saved as a general bookmark from the Tutor
+    // Profile screen, independent of any specific posted requirement.
+    required: false,
     index: true,
   },
   className: {
