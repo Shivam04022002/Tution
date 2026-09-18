@@ -753,6 +753,16 @@ export interface LocationConfig {
   updatedAt: string | null;
 }
 
+/** `GET /api/admin/google-config` — the client secret is never returned, only a flag. */
+export interface GoogleOAuthConfigData {
+  isActive: boolean;
+  webClientId: string;
+  hasWebClientSecret: boolean;
+  androidClientId: string;
+  iosClientId: string;
+  updatedAt: string | null;
+}
+
 /** `GET /api/admin/aws-config` — the secret access key is never returned, only a flag. */
 export interface AwsS3ConfigData {
   isActive: boolean;

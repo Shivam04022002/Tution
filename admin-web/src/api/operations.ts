@@ -4,6 +4,7 @@ import type {
   Campaign,
   CampaignsSummary,
   DemandAnalytics,
+  GoogleOAuthConfigData,
   KycQueueResult,
   LocationConfig,
   OverviewAnalytics,
@@ -286,6 +287,17 @@ export function testLocationConfig(apiKey?: string) {
   return request<{ success: boolean; message: string; data?: any }>('/admin/location-config/test', {
     method: 'POST',
     body: apiKey ? { apiKey } : {},
+  });
+}
+
+export function getGoogleConfig() {
+  return requestData<GoogleOAuthConfigData>('/admin/google-config');
+}
+
+export function updateGoogleConfig(payload: Record<string, any>) {
+  return request<{ success: boolean; message: string }>('/admin/google-config', {
+    method: 'PUT',
+    body: payload,
   });
 }
 
