@@ -234,8 +234,8 @@ const verifyDemoClass = async (): Promise<boolean> => {
   }
   
   console.log(`  ✅ DemoClass found: ${demoClass.demoId}`);
-  console.log(`     Student: ${demoClass.studentDetails.studentName}`);
-  console.log(`     Subject: ${demoClass.studentDetails.subject}`);
+  console.log(`     Student: ${demoClass.studentDetails?.studentName}`);
+  console.log(`     Subject: ${demoClass.studentDetails?.subject}`);
   console.log(`     Date: ${demoClass.scheduledDate.toDateString()}`);
   console.log(`     Time: ${demoClass.scheduledTime}`);
   console.log(`     Duration: ${demoClass.duration} minutes`);

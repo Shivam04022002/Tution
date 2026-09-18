@@ -11,6 +11,8 @@ import {
   signup,
   registerComplete,
   checkDuplicate,
+  googleAuth,
+  getGoogleAuthStatus,
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 
@@ -112,5 +114,7 @@ router.get('/me', authenticate, getCurrentUser);
 router.put('/profile', authenticate, updateProfileValidation, updateProfile);
 router.post('/logout', authenticate, logout);
 router.post('/check-duplicate', checkDuplicate);
+router.get('/google/status', getGoogleAuthStatus);
+router.post('/google', googleAuth);
 
 export default router;

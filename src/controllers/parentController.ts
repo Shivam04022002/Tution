@@ -260,6 +260,8 @@ export const updateParentProfile = async (req: AuthRequest, res: Response) => {
       'profile.profileImage',
       'profile.dateOfBirth',
       'profile.gender',
+      'profile.address.city',
+      'profile.address.state',
     ];
 
     const updates = req.body;
@@ -282,9 +284,11 @@ export const updateParentProfile = async (req: AuthRequest, res: Response) => {
     if (updates.email && !updateData['email']) {
       updateData['email'] = updates.email;
     }
-    if (updates.address?.city || updates.address?.state) {
-      // Address is not in User schema, skip or log
-      console.log('[ParentProfile] Address fields received but not stored in User schema');
+    if (updates.address?.city !== undefined) {
+      updateData['profile.address.city'] = updates.address.city;
+    }
+    if (updates.address?.state !== undefined) {
+      updateData['profile.address.state'] = updates.address.state;
     }
 
     const user = await User.findByIdAndUpdate(

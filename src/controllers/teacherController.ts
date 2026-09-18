@@ -23,9 +23,13 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Check if teacher profile already exists
+    // A draft profile may already exist — updateTeacherProfile() creates one
+    // as soon as the onboarding wizard's first step uploads a photo, well
+    // before this final submission. Only a profile that finished registration
+    // (has a verificationStatus already set beyond the draft default, or is
+    // already marked complete) should block a second registration attempt.
     const existingProfile = await TeacherProfile.findOne({ userId });
-    if (existingProfile) {
+    if (existingProfile && existingProfile.isProfileComplete) {
       return res.status(400).json({
         success: false,
         message: 'Teacher profile already exists',
@@ -46,7 +50,7 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
     // Get file URLs from uploaded files (if any)
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     
-    let profilePictureUrl = personalDetails?.profilePicture || '';
+    let profilePictureUrl = personalDetails?.profilePicture || existingProfile?.basicDetails?.profilePhoto || '';
     let aadhaarDocumentUrl = '';
     const certificateUrls: string[] = [];
 
@@ -148,8 +152,10 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
         ? [teachingMode]
         : [];
 
-    // Create teacher profile
-    const teacherProfile = new TeacherProfile({
+    // Fill in the full profile. If a draft already exists (created by an
+    // earlier updateTeacherProfile() call during onboarding, e.g. the Step 1
+    // photo upload), update it in place instead of inserting a duplicate.
+    const profileData = {
       userId,
       basicDetails: {
         fullName: personalDetails?.fullName,
@@ -257,8 +263,16 @@ export const registerTeacher = async (req: AuthRequest, res: Response) => {
       isActive: true,
       isVerified: false,
       isBlocked: false,
-    });
+      isProfileComplete: true,
+    };
 
+    let teacherProfile;
+    if (existingProfile) {
+      existingProfile.set(profileData);
+      teacherProfile = existingProfile;
+    } else {
+      teacherProfile = new TeacherProfile(profileData);
+    }
     await teacherProfile.save();
 
     // Update user's profile completed status
@@ -375,13 +389,16 @@ export const updateTeacherProfile = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const teacherProfile = await TeacherProfile.findOne({ userId });
+    let teacherProfile = await TeacherProfile.findOne({ userId });
 
     if (!teacherProfile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Teacher profile not found',
-      });
+      // The onboarding wizard asks for a profile photo on its very first step,
+      // long before registerTeacher() creates the real TeacherProfile document.
+      // Create a bare draft now (skipping validation, since none of the
+      // required fields exist yet) so the photo/field updates below have
+      // something to attach to; registerTeacher() fills it in fully later.
+      teacherProfile = new TeacherProfile({ userId });
+      await teacherProfile.save({ validateBeforeSave: false });
     }
 
     const allowedUpdates = [

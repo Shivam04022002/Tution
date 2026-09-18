@@ -6,12 +6,15 @@ export interface IDemoClass extends Document {
   parentId: mongoose.Types.ObjectId;
   teacherId: mongoose.Types.ObjectId;
   teacherProfileId: mongoose.Types.ObjectId;
-  requirementId: mongoose.Types.ObjectId;
-  applicationId: mongoose.Types.ObjectId;
-  studentDetails: {
-    studentName: string;
-    grade: string;
-    subject: string;
+  requirementId?: mongoose.Types.ObjectId;
+  applicationId?: mongoose.Types.ObjectId;
+  // Set only for demos scheduled from an application; profile-page "Book Demo"
+  // requests go through ContactRequest instead and have no requirement/application.
+  sourceContactRequestId?: mongoose.Types.ObjectId;
+  studentDetails?: {
+    studentName?: string;
+    grade?: string;
+    subject?: string;
   };
   scheduledDate: Date;
   scheduledTime: string;
@@ -78,25 +81,25 @@ const DemoClassSchema: Schema = new Schema({
   requirementId: {
     type: Schema.Types.ObjectId,
     ref: 'ParentRequirement',
-    required: true,
   },
   applicationId: {
     type: Schema.Types.ObjectId,
     ref: 'TutorApplication',
-    required: true,
+  },
+  sourceContactRequestId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ContactRequest',
+    index: true,
   },
   studentDetails: {
     studentName: {
       type: String,
-      required: true,
     },
     grade: {
       type: String,
-      required: true,
     },
     subject: {
       type: String,
-      required: true,
     },
   },
   scheduledDate: {

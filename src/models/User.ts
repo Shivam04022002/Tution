@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 
 export interface IUser extends Document {
   firebaseUid?: string;
+  googleId?: string;
   email: string;
   phoneNumber: string;
   password?: string;
@@ -45,6 +46,11 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>({
   firebaseUid: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
+  googleId: {
     type: String,
     unique: true,
     sparse: true,
@@ -107,6 +113,18 @@ const userSchema = new Schema<IUser>({
     department: {
       type: String,
       default: null,
+    },
+    address: {
+      city: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+      state: {
+        type: String,
+        default: '',
+        trim: true,
+      },
     },
   },
   staffRole: {

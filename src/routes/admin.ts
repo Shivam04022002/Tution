@@ -79,6 +79,7 @@ import {
 import { getSmtpConfig, updateSmtpConfig, testSmtpConfig } from '../controllers/smtpConfigController';
 import { getAwsConfig, updateAwsConfig, testAwsConfig } from '../controllers/awsConfigController';
 import { getLocationConfig, updateLocationConfig, testLocationConfig } from '../controllers/locationConfigController';
+import { getGoogleConfig, updateGoogleConfig } from '../controllers/googleConfigController';
 import { authenticate, authorize } from '../middleware/auth';
 
 // Memory storage — no temp files on disk; xlsx reads from buffer
@@ -122,6 +123,10 @@ router.post('/aws-config/test', testAwsConfig);
 router.get('/location-config', getLocationConfig);
 router.put('/location-config', updateLocationConfig);
 router.post('/location-config/test', testLocationConfig);
+
+// Google Sign-In (OAuth) configuration
+router.get('/google-config', getGoogleConfig);
+router.put('/google-config', updateGoogleConfig);
 
 router.get('/users', getAllUsers);
 

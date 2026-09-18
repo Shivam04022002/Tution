@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ContactRequest } from '../models/ContactRequest';
 import { TeacherProfile } from '../models/TeacherProfile';
 import { ParentRequirement } from '../models/ParentRequirement';
+import { DemoClass } from '../models/DemoClass';
 import { User } from '../models/User';
 import { AuthRequest } from '../middleware/auth';
 import { AuditLog } from '../models/AuditLog';
@@ -613,6 +614,27 @@ export const updateContactRequestStatus = async (req: AuthRequest, res: Response
     // Send notification to parent
     if (status === 'accepted') {
       if (contactRequest.contactType === 'demo') {
+        // Profile-page demo requests only ever created a ContactRequest, never
+        // a DemoClass — so an accepted demo never showed up on the parent's or
+        // teacher's Home dashboard / demo list (both read from DemoClass only).
+        // Create the DemoClass here, once, when the teacher accepts.
+        const existingDemoClass = await DemoClass.findOne({
+          sourceContactRequestId: contactRequest._id,
+        });
+        if (!existingDemoClass && contactRequest.demoDate) {
+          await DemoClass.create({
+            parentId: contactRequest.parentId,
+            teacherId: contactRequest.teacherId,
+            teacherProfileId: contactRequest.teacherProfileId,
+            requirementId: contactRequest.requirementId || undefined,
+            sourceContactRequestId: contactRequest._id,
+            scheduledDate: contactRequest.demoDate,
+            scheduledTime: contactRequest.demoTime || '10:00 AM',
+            mode: contactRequest.demoMode === 'offline' ? 'offline' : 'online',
+            status: 'scheduled',
+          });
+        }
+
         await notifyDemoAccepted(
           contactRequest.parentId,
           contactRequest.demoDate || new Date(),

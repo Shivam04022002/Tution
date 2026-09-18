@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import { auth, firestore } from '../config/firebase';
 import { User } from '../models/User';
 import { ParentRequirement } from '../models/ParentRequirement';
 import { TeacherProfile } from '../models/TeacherProfile';
+import { GoogleOAuthConfig } from '../models/GoogleOAuthConfig';
 import { AuthRequest } from '../middleware/auth';
 import { isMailServiceEnabled } from '../services/emailService';
 
@@ -967,6 +969,147 @@ export const checkDuplicate = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to check account availability',
+    });
+  }
+};
+
+// Public — tells the app whether Google Sign-In is configured before it
+// tries to launch the native flow, and hands over the client IDs the SDK
+// needs (neither is secret; the web client secret never leaves the server).
+export const getGoogleAuthStatus = async (req: Request, res: Response) => {
+  try {
+    const config = await GoogleOAuthConfig.findOne();
+    const enabled = !!(config?.isActive && config.webClientId && config.webClientSecretEncrypted);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        enabled,
+        webClientId: enabled ? config?.webClientId : '',
+        iosClientId: enabled ? config?.iosClientId || '' : '',
+      },
+    });
+  } catch (error) {
+    console.error('getGoogleAuthStatus error:', error);
+    // Fail closed — the app should show its "temporarily unavailable" state
+    // rather than crash on a malformed response.
+    return res.status(200).json({ success: true, data: { enabled: false, webClientId: '', iosClientId: '' } });
+  }
+};
+
+// Sign in (or sign up) with a Google ID token obtained client-side via the
+// native Google Sign-In SDK. Mirrors verifyOTP's find-or-create shape so the
+// rest of the app (token handling, response envelope) needs no changes.
+export const googleAuth = async (req: Request, res: Response) => {
+  try {
+    const { idToken, role } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ success: false, message: 'Google ID token is required' });
+    }
+
+    const config = await GoogleOAuthConfig.findOne();
+    if (!config?.isActive || !config.webClientId || !config.webClientSecretEncrypted) {
+      return res.status(503).json({
+        success: false,
+        code: 'GOOGLE_OAUTH_UNAVAILABLE',
+        message: 'Google sign-in is temporarily unavailable. Please try again later.',
+      });
+    }
+
+    let payload;
+    try {
+      const client = new OAuth2Client(config.webClientId);
+      const ticket = await client.verifyIdToken({ idToken, audience: config.webClientId });
+      payload = ticket.getPayload();
+    } catch (error: any) {
+      console.error('Google ID token verification failed:', error.message);
+      return res.status(401).json({ success: false, message: 'Invalid Google sign-in. Please try again.' });
+    }
+
+    if (!payload?.sub || !payload.email) {
+      return res.status(401).json({ success: false, message: 'Invalid Google sign-in. Please try again.' });
+    }
+
+    let user = await User.findOne({ googleId: payload.sub });
+
+    // Link to an existing OTP/password account that used the same email
+    // instead of creating a duplicate user.
+    if (!user) {
+      user = await User.findOne({ email: payload.email.toLowerCase() });
+      if (user) {
+        user.googleId = payload.sub;
+        await user.save();
+      }
+    }
+
+    if (!user) {
+      if (!role) {
+        return res.status(200).json({
+          success: false,
+          code: 'ROLE_REQUIRED',
+          message: 'Role is required for new users. Please specify parent or teacher.',
+          data: {
+            email: payload.email,
+            firstName: payload.given_name || '',
+            lastName: payload.family_name || '',
+            profileImage: payload.picture || '',
+          },
+        });
+      }
+
+      if (!['parent', 'teacher'].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid role. Only parent and teacher roles can be created via Google sign-in.',
+        });
+      }
+
+      user = new User({
+        googleId: payload.sub,
+        email: payload.email.toLowerCase(),
+        // phoneNumber is required + unique on User; Google never provides
+        // one, so use a deterministic placeholder the user can replace later
+        // from their profile, mirroring the placeholder email used for
+        // phone-based signups.
+        phoneNumber: `GOOGLE-${payload.sub}`,
+        role,
+        profile: {
+          firstName: payload.given_name || '',
+          lastName: payload.family_name || '',
+          profileImage: payload.picture || null,
+        },
+      });
+
+      await user.save();
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, message: 'This account has been deactivated.' });
+    }
+
+    const token = generateToken(user._id.toString());
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id,
+        firebaseUid: user.firebaseUid,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+        profile: user.profile,
+        profileCompleted: user.profileCompleted,
+        onboardingCompleted: user.onboardingCompleted,
+      },
+    });
+  } catch (error: any) {
+    console.error('Google auth error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sign in with Google',
     });
   }
 };
