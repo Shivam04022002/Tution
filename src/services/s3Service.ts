@@ -1,14 +1,21 @@
-import { v2 as cloudinary } from 'cloudinary';
+import fs from 'fs';
+import { Upload } from '@aws-sdk/lib-storage';
+import { awsConfig, getS3Client } from '../config/awsConfig';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Cache mapping generated keys to the Cloudinary secure URLs produced by uploadMulterFile.
-// This allows generateCloudFrontUrl(key) to return the real URL without changing the controller code.
-const uploadedUrlCache = new Map<string, string>();
+// ─────────────────────────────────────────────────────────────────────────────
+// Teacher-facing uploads (profile photo, aadhaar/PAN, certificates, portfolio
+// docs) — despite the filename, this used to go through Cloudinary with
+// credentials that were never actually configured (CLOUDINARY_API_KEY was
+// still the literal placeholder value), so every one of these uploads failed.
+// Now routed through the same admin-managed AWS S3 config as course videos
+// (see ../config/awsConfig.ts), which is already set up and working.
+//
+// Unlike course videos, these objects are served as plain, permanent URLs
+// (matching how Cloudinary's secure_url behaved before) rather than
+// short-lived signed links — the bucket needs a policy allowing public
+// GetObject on these prefixes for the URLs below to actually load. Course
+// video objects are untouched and stay private/signed-URL-only.
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const generateS3Key = (folder: string, uid: string, filename: string): string => {
   const sanitized = filename
@@ -21,17 +28,26 @@ export const uploadMulterFile = async (
   file: Express.Multer.File,
   options: { key: string; contentType: string }
 ): Promise<void> => {
-  const ext = file.originalname.split('.').pop()?.toLowerCase() || '';
-  const resourceType = ext === 'pdf' ? 'raw' : 'image';
+  const client = getS3Client();
+  const body = fs.createReadStream(file.path);
 
-  const result = await cloudinary.uploader.upload(file.path, {
-    public_id: options.key,
-    resource_type: resourceType,
-  });
+  try {
+    const upload = new Upload({
+      client,
+      params: {
+        Bucket: awsConfig.s3Bucket,
+        Key: options.key,
+        Body: body,
+        ContentType: options.contentType,
+      },
+    });
 
-  uploadedUrlCache.set(options.key, result.secure_url);
+    await upload.done();
+  } finally {
+    body.destroy();
+  }
 };
 
 export const generateCloudFrontUrl = (key: string): string => {
-  return uploadedUrlCache.get(key) || '';
+  return `https://${awsConfig.s3Bucket}.s3.${awsConfig.region}.amazonaws.com/${key}`;
 };
